@@ -1,0 +1,51 @@
+// What a student is allowed to see about themself. This record is stored under a key
+// derived from Student ID + PIN; it deliberately leaves out the PIN, fee reasons and admin notes.
+export function buildPortalSnapshot({ student: s, fees, examFees, fines, payments, attendance, settings, attStats, totalDue }) {
+  const attLog = Object.keys(attendance)
+    .filter((d) => attendance[d]?.[s.id])
+    .sort()
+    .reverse()
+    .slice(0, 30)
+    .map((date) => ({ date, status: attendance[date][s.id] }));
+
+  return {
+    v: 1,
+    student: {
+      id: s.id,
+      name: s.name,
+      nameEn: s.nameEn || '',
+      roll: s.roll,
+      group: s.group,
+      gender: s.gender || '',
+      studentId: s.studentId,
+      fatherName: s.fatherName || '',
+      motherName: s.motherName || '',
+      guardianPhone: s.guardianPhone || '',
+      address: s.address || '',
+      avatar: s.avatar || '',
+      admissionDate: s.admissionDate || '',
+      monthlyFee: s.monthlyFee || 0,
+    },
+    cls: {
+      code: settings.classCode,
+      institutionName: settings.institutionName,
+      sectionName: settings.sectionName,
+      inchargeName: settings.inchargeName || '',
+      inchargePhone: settings.inchargePhone || '',
+      defaultFeeDeadlineDay: settings.defaultFeeDeadlineDay,
+    },
+    fees: fees
+      .filter((f) => f.studentId === s.id)
+      .map(({ id, studentId, month, year, amount, fine, paid, due, status, deadline }) => ({ id, studentId, month, year, amount, fine: fine || 0, paid: paid || 0, due, status, deadline: deadline || '' })),
+    exams: examFees
+      .filter((e) => e.studentId === s.id)
+      .map(({ id, studentId, examName, amount, paid, due, status, paymentDate, deadline }) => ({ id, studentId, examName, amount, paid: paid || 0, due: due || 0, status, paymentDate: paymentDate || null, deadline: deadline || '' })),
+    fines: fines
+      .filter((f) => f.studentId === s.id)
+      .map(({ id, studentId, amount, reason, date, status }) => ({ id, studentId, amount, reason, date, status })),
+    payments: payments.filter((p) => p.studentId === s.id),
+    att: attStats,
+    attLog,
+    totalDue,
+  };
+}

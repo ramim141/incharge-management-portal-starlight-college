@@ -1,0 +1,82 @@
+rules_version = '2';
+
+// Server-side access control. The app hides other classes in the UI, but THIS is what
+// actually stops a teacher from reading or changing another teacher's class.
+//
+//   principal (role: superadmin) → everything
+//   in-charge (role: incharge)   → only classes/{their classId} and its sub-collections
+//   students (not signed in)     → only a portal/{key} doc whose key they can compute
+//                                  from their Student ID + PIN (get only, never list)
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function userDoc() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(userDoc()); }
+    function me() { return get(userDoc()).data; }
+    function isActive() { return me().get('active', true) != false; }
+    function isPrincipal() { return hasProfile() && me().role == 'superadmin' && isActive(); }
+    function isInchargeOf(classId) {
+      return hasProfile() && me().role == 'incharge' && isActive() && me().get('classId', null) == classId;
+    }
+    function canManage(classId) { return isPrincipal() || isInchargeOf(classId); }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    function ownerDoc() { return /databases/$(database)/documents/meta/owner; }
+    // First-run setup: allowed only while no owner exists, in the same batch that creates it
+    function isBootstrapping() {
+      return signedIn() && !exists(ownerDoc()) && getAfter(ownerDoc()).data.uid == request.auth.uid;
+    }
+
+    match /meta/institution {
+      allow read: if true;  // name shown on the public student portal
+      allow create: if isPrincipal() || isBootstrapping();
+      allow update: if isPrincipal();
+      allow delete: if false;
+    }
+
+    match /meta/owner {
+      allow get: if true;   // the login screen checks whether first-run setup is needed
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && !exists(ownerDoc());
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || isPrincipal());
+      allow list: if isPrincipal();
+      allow create: if isPrincipal()
+        || (isBootstrapping() && request.auth.uid == uid && request.resource.data.role == 'superadmin');
+      // Teachers may edit their own name/phone/designation — never role, class or active
+      allow update: if isPrincipal() || (request.auth.uid == uid && onlyChanges(['name', 'phone', 'designation']));
+      allow delete: if isPrincipal();
+    }
+
+    match /classes/{classId} {
+      allow get: if canManage(classId);
+      allow list: if isPrincipal();
+      allow create, delete: if isPrincipal();
+      // In-charges can change fee rules / template / their contact info and the cached stats,
+      // but not the class name, code or who the in-charge is
+      allow update: if isPrincipal()
+        || (isInchargeOf(classId)
+            && onlyChanges(['settings', 'inchargeName', 'inchargePhone', 'inchargeDesignation', 'stats', 'statsHash']));
+
+      match /{collection}/{docId} {
+        allow read, write: if canManage(classId);
+      }
+    }
+
+    match /portal/{key} {
+      allow get: if true;
+      allow list: if false;
+      allow create: if canManage(request.resource.data.classId);
+      allow update: if canManage(resource.data.classId) && canManage(request.resource.data.classId);
+      allow delete: if canManage(resource.data.classId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
