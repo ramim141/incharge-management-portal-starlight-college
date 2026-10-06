@@ -556,7 +556,12 @@ function TeacherForm({ classes, users, onDone }) {
       toast(`${user.name} — আইডি ${id}`);
       onDone({ ...user, password: f.password, className: classes.find((c) => c.id === f.classId)?.name });
     } catch (e) {
-      setErr(errorText(e));
+      console.error('Create teacher failed', e);
+      if (e?.code === 'auth/email-already-in-use' && recovery) {
+        setErr('এই রিকভারি ইমেইলে আগেই একটি অ্যাকাউন্ট আছে (যেমন অধ্যক্ষের নিজের)। অন্য ইমেইল দিন বা ঘরটি খালি রাখুন।');
+      } else {
+        setErr(`${errorText(e)}${e?.code ? ` [${e.code}]` : ''}`);
+      }
       setBusy(false);
     }
   };
@@ -589,7 +594,7 @@ function TeacherForm({ classes, users, onDone }) {
           </Button>
         </div>
       </Field>
-      <Field label="রিকভারি ইমেইল (ঐচ্ছিক)" hint="দিলে পাসওয়ার্ড ভুলে গেলে এখানে রিসেট লিংক যাবে। শিক্ষক পরে নিজেও যোগ করতে পারবেন।">
+      <Field label="শিক্ষকের রিকভারি ইমেইল (ঐচ্ছিক)" hint="শিক্ষকের নিজের ইমেইল — আপনার (অধ্যক্ষের) ইমেইল নয়। খালি রাখলেও চলবে; শিক্ষক পরে নিজে যোগ করতে পারবেন।">
         <Input type="email" inputMode="email" autoCapitalize="off" value={f.email} onChange={set('email')} placeholder="ঐচ্ছিক" />
       </Field>
       <div>
