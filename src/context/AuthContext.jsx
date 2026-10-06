@@ -53,12 +53,15 @@ export function AuthProvider({ children }) {
     ]);
   }, [user, profile]);
 
-  useEffect(() => {
-    backend
-      .getDoc(['meta', 'owner'])
-      .then((o) => setNeedsSetup(!o))
-      .catch(() => setNeedsSetup(false));
-  }, [user]);
+  // Live listener rather than a one-off read: a read made before the connection is up fails and
+  // would hide first-run setup; the listener retries and answers once the server responds
+  useEffect(
+    () =>
+      backend.subscribeDoc(['meta', 'owner'], (o) => {
+        if (o !== undefined) setNeedsSetup(!o);
+      }),
+    [],
+  );
 
   const value = useMemo(() => {
     // Until the profile for *this* user arrives (it lags one render behind sign-in), keep loading
