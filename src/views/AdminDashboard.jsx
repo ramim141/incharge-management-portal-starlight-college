@@ -5,9 +5,9 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Card, IconButton, Avatar, Badge, Button, Progress, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
+import { Card, IconButton, Avatar, RollBadge, Badge, Button, Progress, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
-import { taka, monthBn, fmtDate, fmtTime, dayNameBn, greetingBn, todayISO, groupBn, feeStatus, shiftISODate } from '../lib/format';
+import { taka, monthBn, fmtDate, fmtTime, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate } from '../lib/format';
 
 export const AdminDashboard = () => {
   const {
@@ -374,11 +374,11 @@ function SearchSheet({ open, onClose }) {
               }}
               className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-50"
             >
-              <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={44} />
+              <RollBadge roll={s.roll} seed={s.id} size={44} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15.5px] font-semibold text-ink">{s.name}</span>
                 <span className="block text-[12.5px] text-slate-500">
-                  রোল {s.roll} · {groupBn(s.group)} · {s.guardianPhone}
+                  {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ')}
                 </span>
               </span>
               {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">✓</Badge>}

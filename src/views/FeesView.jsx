@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Zap, MessageSquareText, Wallet, CreditCard } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Chips, SearchBar, Card, Avatar, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
-import { taka, monthBn, ACADEMIC_MONTHS, FEE_STATUS, feeStatus, daysLate } from '../lib/format';
+import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
+import { taka, monthBn, ACADEMIC_MONTHS, FEE_STATUS, feeStatus, daysLate, studentTags } from '../lib/format';
 
 export const REASONS = [
   'আর্থিক সমস্যা',
@@ -22,7 +22,8 @@ export const FeesView = () => {
   const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
 
   const [month, setMonth] = useState(settings.currentMonth);
-  const [status, setStatus] = useState('All');
+  const [filters, setFilters] = useState({ status: 'All' });
+  const { status } = filters;
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null);
 
@@ -68,7 +69,7 @@ export const FeesView = () => {
         subtitle={`${monthBn(month)} ${year} · শেষ তারিখ ${settings.defaultFeeDeadlineDay} ${monthBn(month)}`}
         actions={<IconButton icon={Zap} label="স্বয়ংক্রিয় জরিমানা" onClick={runAutoFine} />}
       >
-        <Chips value={month} onChange={setMonth} options={ACADEMIC_MONTHS.map((m) => ({ value: m, label: monthBn(m) }))} />
+        <SelectPill label="মাস" value={month} onChange={setMonth} options={ACADEMIC_MONTHS.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
       </PageHeader>
 
       {missing > 0 && (
@@ -97,18 +98,26 @@ export const FeesView = () => {
         </Card>
       </div>
 
-      <Chips
-        className="mt-4"
-        value={status}
-        onChange={setStatus}
-        options={[
-          { value: 'All', label: 'সবাই', count: withStudent.length },
-          { value: 'Paid', label: '🟢 পরিশোধিত', count: cnt('Paid') },
-          { value: 'Due', label: '🟡 বাকি', count: cnt('Due') },
-          { value: 'Overdue', label: '🔴 মেয়াদোত্তীর্ণ', count: cnt('Overdue') },
-        ]}
-      />
-      <SearchBar className="mt-3" value={q} onChange={setQ} placeholder="রোল বা নাম" />
+      <div className="mt-4 flex gap-2">
+        <SearchBar className="flex-1" value={q} onChange={setQ} placeholder="রোল বা নাম" />
+        <FilterButton
+          value={filters}
+          defaults={{ status: 'All' }}
+          onChange={setFilters}
+          groups={[
+            {
+              key: 'status',
+              label: 'অবস্থা',
+              options: [
+                { value: 'All', label: 'সবাই', count: withStudent.length },
+                { value: 'Paid', label: 'পরিশোধিত', count: cnt('Paid') },
+                { value: 'Due', label: 'বাকি', count: cnt('Due') },
+                { value: 'Overdue', label: 'মেয়াদোত্তীর্ণ', count: cnt('Overdue') },
+              ],
+            },
+          ]}
+        />
+      </div>
 
       {list.length === 0 ? (
         <EmptyState icon={CreditCard} title="কোনো রেকর্ড নেই" text={`${monthBn(month)} মাসের জন্য এই ফিল্টারে কিছু পাওয়া যায়নি`} />
@@ -119,11 +128,11 @@ export const FeesView = () => {
             return (
               <Card key={f.id} className="p-4">
                 <div className="flex items-center gap-3">
-                  <Avatar src={s?.avatar} name={s?.nameEn || s?.name || String(f.roll)} seed={f.studentId} size={42} />
+                  <RollBadge roll={s?.roll ?? f.roll} seed={f.studentId} size={42} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15.5px] font-semibold text-ink">{s?.name || `রোল ${f.roll}`}</p>
                     <p className="text-[12.5px] text-slate-500">
-                      রোল {f.roll}
+                      {studentTags(s)}
                       {late > 0 && <span className="font-semibold text-rose-600"> · {late} দিন দেরি</span>}
                     </p>
                   </div>

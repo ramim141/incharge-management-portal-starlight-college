@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { backend, isDemo } from '../backend';
-import { DEFAULT_CLASS_SETTINGS } from '../backend/demoSeed';
-import { EN_MONTHS, todayISO, feeStatus } from '../lib/format';
+import { backend, isLocal } from '../backend';
+import { DEFAULT_CLASS_SETTINGS } from '../lib/defaults';
+import { EN_MONTHS, todayISO, feeStatus, setClassLabels } from '../lib/format';
 import { newId, portalKey, quickHash } from '../lib/hash';
 import { buildPortalSnapshot } from '../lib/portal';
 
@@ -29,6 +29,19 @@ const normalizeFee = (f) => {
   return { ...f, amount, fine, paid, due, status };
 };
 
+// A fine can be partly waived and partly paid; what is still owed is derived from those
+export const normalizeFine = (f) => {
+  const amount = Number(f.amount || 0);
+  // Older records only had a status: treat "Waived" as fully waived and "Paid" as fully paid
+  const waived = Math.min(amount, Number(f.waived ?? (f.status === 'Waived' ? amount : 0)) || 0);
+  const paid = Math.min(amount - waived, Number(f.paid ?? (f.status === 'Paid' ? amount - waived : 0)) || 0);
+  const due = Math.max(0, amount - waived - paid);
+  const status = due > 0 ? 'Active' : paid > 0 ? 'Paid' : 'Waived';
+  return { ...f, amount, waived, paid, due, status };
+};
+
+export const absenceFineId = (date, studentId) => `fine-abs-${date}-${studentId}`;
+
 export function AppProvider({ classId, profile, institution, onExit, onSignOut, onOpenPortal, children }) {
   const [classDoc, setClassDoc] = useState(undefined);
   const [raw, setRaw] = useState({ students: [], fees: [], examFees: [], fines: [], payments: [], attendance: [] });
@@ -53,7 +66,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
   const fees = useMemo(() => raw.fees.map(normalizeFee), [raw.fees]);
   const examFees = raw.examFees;
-  const fines = raw.fines;
+  const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
   const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
   const attendance = useMemo(() => Object.fromEntries(raw.attendance.map((a) => [a.date || a.id, a.records || {}])), [raw.attendance]);
 
@@ -78,6 +91,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       currentYear,
     };
   }, [classDoc, classId, institution, currentMonth, currentYear]);
+  // Label helpers (groupBn, sectionBn…) read this class's own department / section names
+  setClassLabels(settings);
 
   const P = (coll, id) => ['classes', classId, coll, id];
   const write = (ops) => backend.write(ops);
@@ -85,7 +100,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   /* ───────────── calculations ───────────── */
   const calculateStudentTotalDue = (studentId) =>
     fees.filter((f) => f.studentId === studentId).reduce((a, f) => a + f.due, 0) +
-    fines.filter((f) => f.studentId === studentId && f.status === 'Active').reduce((a, f) => a + Number(f.amount || 0), 0) +
+    fines.filter((f) => f.studentId === studentId).reduce((a, f) => a + f.due, 0) +
     examFees.filter((e) => e.studentId === studentId && e.status === 'Due').reduce((a, e) => a + Number(e.due || 0), 0);
 
   const getStudentAttendanceStats = (studentId) => {
@@ -121,6 +136,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       .replace(/\{total_due\}/g, calculateStudentTotalDue(student.id))
       .replace(/\{deadline\}/g, `${settings.defaultFeeDeadlineDay} ${currentMonth} ${currentYear}`)
       .replace(/\{incharge_name\}/g, settings.inchargeName)
+      .replace(/\{incharge_phone\}/g, settings.inchargePhone || '')
       .replace(/\{class_name\}/g, settings.className)
       .replace(/\{roll\}/g, student.roll);
   };
@@ -213,9 +229,44 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     return ops.length;
   };
 
-  const saveAttendanceRecord = (date, records) => write([{ type: 'set', path: P('attendance', date), data: { date, records } }]);
+  /** Per-student absence fine: the student's own rate if set, otherwise the class default */
+  const absenceFineFor = (student) => {
+    const own = student?.absentFine;
+    return Math.max(0, Number(own === '' || own == null ? settings.absentFine : own) || 0);
+  };
 
-  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, fineId = null, examFeeId = null }) => {
+  /**
+   * Saves a day's attendance and keeps that day's absence fines in step with it:
+   * newly absent → fine at the student's rate; no longer absent → unpaid fine removed.
+   * A fine the teacher already edited or waived is left as it is.
+   */
+  const saveAttendanceRecord = async (date, records) => {
+    const ops = [{ type: 'set', path: P('attendance', date), data: { date, records } }];
+    let added = 0;
+    let removed = 0;
+    students.forEach((s) => {
+      const id = absenceFineId(date, s.id);
+      const existing = fines.find((f) => f.id === id);
+      if (records[s.id] === 'Absent') {
+        const amount = absenceFineFor(s);
+        if (!existing && amount > 0) {
+          ops.push({
+            type: 'set',
+            path: P('fines', id),
+            data: { id, kind: 'absent', studentId: s.id, roll: Number(s.roll), amount, waived: 0, paid: 0, reason: 'অনুপস্থিতি জরিমানা', date, status: 'Active' },
+          });
+          added += 1;
+        }
+      } else if (existing && existing.paid === 0) {
+        ops.push({ type: 'delete', path: P('fines', id) });
+        removed += 1;
+      }
+    });
+    await write(ops);
+    return { added, removed };
+  };
+
+  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, fineId = null, fineIds = null, examFeeId = null }) => {
     const last = payments.reduce((m, p) => Math.max(m, Number(String(p.receiptNo).split('-').pop()) || 0), 100);
     const payment = {
       id: newId('pay'),
@@ -242,11 +293,18 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       const due = Math.max(0, Number(exam.due || exam.amount) - pay);
       ops.push({ type: 'merge', path: P('examFees', exam.id), data: { paid: Number(exam.paid || 0) + pay, due, status: due === 0 ? 'Paid' : 'Due', paymentDate } });
     }
-    const fine = fineId && fines.find((f) => f.id === fineId);
-    if (fine && left >= Number(fine.amount)) {
-      left -= Number(fine.amount);
-      ops.push({ type: 'merge', path: P('fines', fine.id), data: { status: 'Paid', paidAt: paymentDate } });
-    }
+    // Fines are settled oldest first; a fine can be paid in part
+    const fineList = (fineIds || (fineId ? [fineId] : []))
+      .map((id) => fines.find((f) => f.id === id))
+      .filter((f) => f && f.due > 0)
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    fineList.forEach((f) => {
+      if (left <= 0) return;
+      const pay = Math.min(left, f.due);
+      left -= pay;
+      const paid = f.paid + pay;
+      ops.push({ type: 'merge', path: P('fines', f.id), data: { paid, status: f.amount - f.waived - paid > 0 ? 'Active' : 'Paid', paidAt: paymentDate } });
+    });
     const fee = feeId && fees.find((f) => f.id === feeId);
     if (fee && left > 0) {
       const paid = fee.paid + left;
@@ -258,12 +316,31 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   };
 
   const addFine = async ({ studentId, roll, amount, reason, date = todayISO() }) => {
-    const fine = { id: newId('fine'), studentId, roll: Number(roll), amount: Number(amount), reason, date, status: 'Active' };
+    const fine = { id: newId('fine'), kind: 'manual', studentId, roll: Number(roll), amount: Number(amount), waived: 0, paid: 0, reason, date, status: 'Active' };
     await write([{ type: 'set', path: P('fines', fine.id), data: fine }]);
     return fine;
   };
 
-  const waiveFine = (id) => write([{ type: 'merge', path: P('fines', id), data: { status: 'Waived' } }]);
+  /** Edits a fine: amount, reason and how much of it is waived (মওকুফ). Paid money is never touched. */
+  const updateFine = async (id, { amount, reason, waived, waiveNote }) => {
+    const f = fines.find((x) => x.id === id);
+    if (!f) return;
+    const amt = Math.max(f.paid, Number(amount ?? f.amount) || 0);
+    const w = Math.min(amt - f.paid, Math.max(0, Number(waived ?? f.waived) || 0));
+    const data = { amount: amt, waived: w, status: normalizeFine({ ...f, amount: amt, waived: w }).status, editedAt: new Date().toISOString(), editedBy: profile?.name || '' };
+    if (reason != null) data.reason = reason;
+    if (waiveNote != null) data.waiveNote = waiveNote;
+    if (w !== f.waived) data.waivedAt = w > 0 ? new Date().toISOString() : null;
+    await write([{ type: 'merge', path: P('fines', id), data }]);
+  };
+
+  /** Waives whatever is still owed on a fine */
+  const waiveFine = (id, note) => {
+    const f = fines.find((x) => x.id === id);
+    return f ? updateFine(id, { waived: f.amount - f.paid, waiveNote: note }) : undefined;
+  };
+
+  const deleteFine = (id) => write([{ type: 'delete', path: P('fines', id) }]);
 
   const createExam = async ({ examName, amount, deadline }) => {
     const key = Date.now().toString(36);
@@ -276,7 +353,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     return ops.length;
   };
 
-  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'whatsappTemplate'];
+  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
   const setSettings = async (form) => {
     const rules = Object.fromEntries(RULE_KEYS.map((k) => [k, form[k] ?? settings[k]]));
     const incharge = {
@@ -364,8 +441,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     classDoc,
     profile,
     isPrincipal: profile?.role === 'superadmin',
-    isDemo,
-    isFirestoreConnected: !isDemo,
+    isLocal,
+    isFirestoreConnected: !isLocal,
     userRole: 'admin',
     exitClass: onExit,
     signOut: onSignOut,
@@ -380,9 +457,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     activeTab, setActiveTab,
 
     addStudent, updateStudent, deleteStudent, updateFee, generateMonthFees, applyAutoFines, saveAttendanceRecord,
-    getStudentAttendanceStats, recordPayment, addFine, waiveFine, createExam, calculateStudentTotalDue,
+    getStudentAttendanceStats, recordPayment, addFine, updateFine, waiveFine, deleteFine, absenceFineFor, createExam, calculateStudentTotalDue,
     generateWhatsAppMessage, importBackup,
-    resetToDefaultMockData: () => backend.resetDemo?.(),
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

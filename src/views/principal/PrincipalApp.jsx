@@ -1,20 +1,25 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { CLASS_INDEX_PATH, buildClassIndex } from '../../lib/classIndex';
 import {
   House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, Mail, KeyRound,
-  Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye,
+  Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
-import { backend, isDemo, errorText } from '../../backend';
-import { DEFAULT_CLASS_SETTINGS } from '../../backend/demoSeed';
+import { backend, isLocal, errorText } from '../../backend';
+import { DEFAULT_CLASS_SETTINGS } from '../../lib/defaults';
+import {
+  STAFF_COUNTER_PATH, DEFAULT_STAFF_PREFIX, loginIdPath, staffEmail, isStaffEmail, formatStaffId, nextStaffSerial, generateStaffPassword,
+} from '../../lib/staffLogin';
+import { AccountSheet } from '../../components/AccountSheets';
 import { useBackHandler } from '../../lib/backstack';
 import { taka, monthBn, EN_MONTHS, waLink } from '../../lib/format';
 import {
-  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, Chips, cx, CONTAINER, GUTTER,
+  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, cx, CONTAINER, GUTTER,
   CARD_GRID, DOCK, DOCK_BOTTOM,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
-import { assignOps, deleteClassDeep, generatePassword, CLASS_PRESETS } from './principalData';
+import { assignOps, deleteClassDeep, CLASS_PRESETS } from './principalData';
 
 const TABS = [
   { id: 'home', label: 'ওভারভিউ', icon: House },
@@ -31,6 +36,17 @@ export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
 
   useEffect(() => backend.subscribeCollection(['classes'], (l) => setClasses(l.sort((a, b) => String(a.id).localeCompare(String(b.id))))), []);
   useEffect(() => backend.subscribeCollection(['users'], setUsers), []);
+
+  // Keep the public class list (student portal's class picker) matching the real classes
+  const [classIndex, setClassIndex] = useState(undefined);
+  useEffect(() => backend.subscribeDoc(CLASS_INDEX_PATH, setClassIndex), []);
+  useEffect(() => {
+    if (!classes || classIndex === undefined) return;
+    const next = buildClassIndex(classes);
+    if (JSON.stringify(next) !== JSON.stringify(classIndex?.classes || [])) {
+      backend.write([{ type: 'set', path: CLASS_INDEX_PATH, data: { classes: next } }]);
+    }
+  }, [classes, classIndex]);
   useBackHandler(tab !== 'home', () => setTab('home'));
 
   const teachers = useMemo(() => (users || []).filter((u) => u.role === 'incharge').sort((a, b) => String(a.name).localeCompare(String(b.name))), [users]);
@@ -279,7 +295,8 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
     setBusy(true);
     const id = cls ? cls.id : code;
     const settings = {
-      ...(cls?.settings || DEFAULT_CLASS_SETTINGS),
+      ...DEFAULT_CLASS_SETTINGS,
+      ...(cls?.settings || {}),
       defaultMonthlyFee: Number(f.defaultMonthlyFee),
       defaultFeeDeadlineDay: Number(f.defaultFeeDeadlineDay),
       fixedFineAfterDeadline: Number(f.fixedFineAfterDeadline),
@@ -428,7 +445,8 @@ function TeachersTab({ classes, users, teachers }) {
   return (
     <div>
       <PageHeader title="শিক্ষক" subtitle={`${teachers.length} জন ইনচার্জ`} actions={<IconButton icon={UserPlus} label="নতুন শিক্ষক" onClick={() => setCreating(true)} />}>
-        <Chips
+        <SelectPill
+          label="দেখান"
           value={filter}
           onChange={setFilter}
           options={[
@@ -450,7 +468,7 @@ function TeachersTab({ classes, users, teachers }) {
                 <Avatar name={t.name} seed={t.id} size={46} rounded="rounded-full" />
                 <span className="min-w-0 flex-1">
                   <span className={cx('block truncate text-[15.5px] font-semibold', t.active === false ? 'text-slate-400' : 'text-ink')}>{t.name}</span>
-                  <span className="block truncate text-[12.5px] text-slate-500">{t.email}</span>
+                  <span className="tabular block truncate text-[12.5px] text-slate-500">{t.loginId ? `আইডি ${t.loginId}` : t.email}</span>
                 </span>
                 {t.active === false ? <Badge tone="slate">নিষ্ক্রিয়</Badge> : cls ? <Badge tone="brand">{cls.name}</Badge> : <Badge tone="amber">ক্লাস নেই</Badge>}
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
@@ -475,7 +493,7 @@ function TeachersTab({ classes, users, teachers }) {
       <Sheet open={!!created} onClose={() => setCreated(null)} title="অ্যাকাউন্ট তৈরি হয়েছে" subtitle="লগইন তথ্য শিক্ষককে জানিয়ে দিন">
         {created && <LoginInfo info={created} />}
       </Sheet>
-      <Sheet open={!!open} onClose={() => setOpenId(null)} full title={open?.name} subtitle={open?.email}>
+      <Sheet open={!!open} onClose={() => setOpenId(null)} full title={open?.name} subtitle={open?.loginId ? `লগইন আইডি ${open.loginId}` : open?.email}>
         {open && <TeacherDetail t={open} classes={classes} users={users} onClose={() => setOpenId(null)} />}
       </Sheet>
     </div>
@@ -484,24 +502,44 @@ function TeachersTab({ classes, users, teachers }) {
 
 function TeacherForm({ classes, users, onDone }) {
   const { toast } = useUI();
-  const [f, setF] = useState({ name: '', email: '', phone: '', designation: 'প্রভাষক', password: generatePassword(), classId: '' });
+  const [counter, setCounter] = useState(undefined);
+  const [f, setF] = useState({ name: '', email: '', phone: '', designation: 'প্রভাষক', password: generateStaffPassword(), classId: '' });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const free = classes.filter((c) => !c.inchargeUid);
 
+  useEffect(() => backend.subscribeDoc(STAFF_COUNTER_PATH, setCounter), []);
+  const prefix = counter?.prefix || DEFAULT_STAFF_PREFIX;
+  const serial = nextStaffSerial(counter, users, prefix);
+  const loginId = formatStaffId(prefix, serial);
+
   const save = async () => {
-    if (!f.name.trim() || !f.email.trim()) return setErr('নাম ও ইমেইল দিন');
+    if (!f.name.trim()) return setErr('শিক্ষকের নাম দিন');
     if (f.password.length < 6) return setErr('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর');
+    const recovery = f.email.trim().toLowerCase();
+    if (recovery && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recovery)) return setErr('রিকভারি ইমেইল সঠিক নয়');
     setBusy(true);
     try {
-      const uid = await backend.createAccount(f.email, f.password, { secondary: true });
-      const user = { id: uid, role: 'incharge', name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: f.phone.trim(), designation: f.designation.trim(), classId: null, active: true };
-      const { id, ...data } = user;
-      const ops = [{ type: 'set', path: ['users', uid], data }];
+      // Skip any number already taken (e.g. created from another phone at the same time)
+      let n = serial;
+      while (await backend.getDoc(loginIdPath(formatStaffId(prefix, n)))) n += 1;
+      const id = formatStaffId(prefix, n);
+      const email = recovery || staffEmail(id);
+      const uid = await backend.createAccount(email, f.password, { secondary: true });
+      const user = {
+        id: uid, role: 'incharge', loginId: id, name: f.name.trim(), email, phone: f.phone.trim(), designation: f.designation.trim(),
+        classId: null, active: true, mustChangePassword: true,
+      };
+      const { id: _uid, ...data } = user;
+      const ops = [
+        { type: 'set', path: ['users', uid], data },
+        { type: 'set', path: loginIdPath(id), data: { email, uid } },
+        { type: 'set', path: STAFF_COUNTER_PATH, data: { prefix, last: n } },
+      ];
       if (f.classId) ops.push(...assignOps({ classes, users: [...users, user], classCode: f.classId, uid }));
       await backend.write(ops, { wait: true });
-      toast(`${user.name} এর অ্যাকাউন্ট তৈরি হয়েছে`);
+      toast(`${user.name} — আইডি ${id}`);
       onDone({ ...user, password: f.password, className: classes.find((c) => c.id === f.classId)?.name });
     } catch (e) {
       setErr(errorText(e));
@@ -522,16 +560,23 @@ function TeacherForm({ classes, users, onDone }) {
           <Input type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="01XXXXXXXXX" />
         </Field>
       </div>
-      <Field label="ইমেইল (লগইনের জন্য)">
-        <Input type="email" inputMode="email" autoCapitalize="off" value={f.email} onChange={set('email')} />
-      </Field>
-      <Field label="প্রথম পাসওয়ার্ড" hint="শিক্ষক পরে নিজে বদলাতে পারবেন">
+      <div className="flex items-center gap-3 rounded-2xl bg-brand-50/70 p-4">
+        <IdCard className="h-6 w-6 shrink-0 text-brand-600" />
+        <div className="flex-1">
+          <p className="text-[12.5px] text-brand-800">লগইন আইডি (আপনাআপনি)</p>
+          <p className="tabular text-[20px] font-extrabold tracking-wide text-ink">{counter === undefined ? '…' : loginId}</p>
+        </div>
+      </div>
+      <Field label="প্রথম পাসওয়ার্ড" hint="প্রথমবার লগইনের পর শিক্ষককে নিজের পাসওয়ার্ড দিতে হবে">
         <div className="flex gap-2">
           <Input value={f.password} onChange={set('password')} className="tabular flex-1 tracking-wider" />
-          <Button variant="secondary" className="w-12 shrink-0 px-0" aria-label="নতুন পাসওয়ার্ড" onClick={() => setF((x) => ({ ...x, password: generatePassword() }))}>
+          <Button variant="secondary" className="w-12 shrink-0 px-0" aria-label="নতুন পাসওয়ার্ড" onClick={() => setF((x) => ({ ...x, password: generateStaffPassword() }))}>
             <RotateCcw className="h-5 w-5" />
           </Button>
         </div>
+      </Field>
+      <Field label="রিকভারি ইমেইল (ঐচ্ছিক)" hint="দিলে পাসওয়ার্ড ভুলে গেলে এখানে রিসেট লিংক যাবে। শিক্ষক পরে নিজেও যোগ করতে পারবেন।">
+        <Input type="email" inputMode="email" autoCapitalize="off" value={f.email} onChange={set('email')} placeholder="ঐচ্ছিক" />
       </Field>
       <div>
         <p className="mb-2 text-[13.5px] font-semibold text-slate-700">কোন ক্লাসের ইনচার্জ</p>
@@ -544,7 +589,7 @@ function TeacherForm({ classes, users, onDone }) {
       </div>
       {err && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-[13.5px] font-medium text-rose-700">{err}</p>}
       <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
-        <Button size="lg" block onClick={save} disabled={busy}>
+        <Button size="lg" block onClick={save} disabled={busy || counter === undefined}>
           {busy ? 'তৈরি হচ্ছে…' : 'অ্যাকাউন্ট তৈরি করুন'}
         </Button>
       </div>
@@ -554,7 +599,8 @@ function TeacherForm({ classes, users, onDone }) {
 
 function LoginInfo({ info }) {
   const [copied, setCopied] = useState(false);
-  const text = `আসসালামু আলাইকুম ${info.name},\nXI Class Portal-এ আপনার ইনচার্জ অ্যাকাউন্ট তৈরি হয়েছে।${info.className ? `\nক্লাস: ${info.className}` : ''}\nলিংক: ${window.location.origin}\nইমেইল: ${info.email}\nপাসওয়ার্ড: ${info.password}\n\nপ্রথমবার ঢোকার পর পাসওয়ার্ড বদলে নিন।`;
+  const loginAs = info.loginId || info.email;
+  const text = `আসসালামু আলাইকুম ${info.name},\nক্লাস পোর্টালে আপনার ইনচার্জ অ্যাকাউন্ট তৈরি হয়েছে।${info.className ? `\nক্লাস: ${info.className}` : ''}\nলিংক: ${window.location.origin}\nলগইন আইডি: ${loginAs}\nপাসওয়ার্ড: ${info.password}\n\nপ্রথমবার ঢোকার পর নিজের পাসওয়ার্ড দিতে হবে।`;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -567,8 +613,8 @@ function LoginInfo({ info }) {
   return (
     <div className="space-y-4 pt-1">
       <div className="space-y-2 rounded-3xl bg-slate-50 p-4 text-[14.5px]">
-        <p className="flex items-center gap-2 text-ink">
-          <Mail className="h-4 w-4 text-slate-400" /> {info.email}
+        <p className="tabular flex items-center gap-2 text-[17px] font-extrabold tracking-wide text-ink">
+          {info.loginId ? <IdCard className="h-4 w-4 text-slate-400" /> : <Mail className="h-4 w-4 text-slate-400" />} {loginAs}
         </p>
         <p className="tabular flex items-center gap-2 font-bold tracking-wider text-ink">
           <KeyRound className="h-4 w-4 text-slate-400" /> {info.password}
@@ -626,11 +672,13 @@ function TeacherDetail({ t, classes, users, onClose }) {
     toast(off ? 'অ্যাকাউন্ট নিষ্ক্রিয় হয়েছে' : 'অ্যাকাউন্ট চালু হয়েছে');
   };
 
+  const hasRecovery = !isStaffEmail(t.email);
   const resetPw = async () => {
     try {
-      if (isDemo) {
-        const pw = generatePassword();
+      if (isLocal) {
+        const pw = generateStaffPassword();
         await backend.setPassword(t.email, pw);
+        await backend.write([{ type: 'merge', path: ['users', t.id], data: { mustChangePassword: true } }]);
         setNewPw(pw);
       } else {
         await backend.resetPassword(t.email);
@@ -698,9 +746,27 @@ function TeacherDetail({ t, classes, users, onClose }) {
 
       <section className="space-y-2.5">
         <p className="text-[13px] font-bold uppercase tracking-wide text-slate-400">অ্যাকাউন্ট</p>
-        <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
-          {isDemo ? 'নতুন পাসওয়ার্ড দিন' : 'পাসওয়ার্ড রিসেট লিংক পাঠান'}
-        </Button>
+        {t.loginId && (
+          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+            <IdCard className="h-5 w-5 text-slate-400" />
+            <span className="flex-1 text-[14px] text-slate-600">লগইন আইডি</span>
+            <span className="tabular text-[16px] font-extrabold tracking-wide text-ink">{t.loginId}</span>
+          </div>
+        )}
+        <p className="px-1 text-[13px] text-slate-500">
+          {hasRecovery ? `রিকভারি ইমেইল: ${t.email}` : 'রিকভারি ইমেইল নেই — শিক্ষক মেনু থেকে নিজে যোগ করতে পারবেন।'}
+          {t.mustChangePassword ? ' · এখনো প্রথম পাসওয়ার্ড বদলানো হয়নি' : ''}
+        </p>
+        {(isLocal || hasRecovery) && (
+          <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
+            {isLocal ? 'নতুন পাসওয়ার্ড দিন' : 'পাসওয়ার্ড রিসেট লিংক পাঠান'}
+          </Button>
+        )}
+        {!isLocal && !hasRecovery && (
+          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">
+            পাসওয়ার্ড ভুলে গেলে: নতুন শিক্ষক অ্যাকাউন্ট (নতুন আইডি) তৈরি করে ক্লাসের দায়িত্ব সেখানে দিন, তারপর এই অ্যাকাউন্ট নিষ্ক্রিয় করুন। ক্লাসের সব তথ্য ঠিক থাকবে।
+          </p>
+        )}
         {newPw && <LoginInfo info={{ ...t, password: newPw, className: cls?.name }} />}
         <Button variant={t.active === false ? 'soft-success' : 'soft-danger'} icon={Power} block onClick={toggleActive}>
           {t.active === false ? 'অ্যাকাউন্ট চালু করুন' : 'অ্যাকাউন্ট নিষ্ক্রিয় করুন'}
@@ -717,17 +783,26 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
   const { toast, confirm } = useUI();
   const [inst, setInst] = useState({ name: institution?.name || '', address: institution?.address || '' });
   const [me, setMe] = useState({ name: profile?.name || '', phone: profile?.phone || '' });
-  const dirty = inst.name !== (institution?.name || '') || inst.address !== (institution?.address || '') || me.name !== (profile?.name || '') || me.phone !== (profile?.phone || '');
+  const [counter, setCounter] = useState(undefined);
+  const [prefix, setPrefix] = useState(null); // null = not edited
+  const [account, setAccount] = useState(null);
+  useEffect(() => backend.subscribeDoc(STAFF_COUNTER_PATH, setCounter), []);
+  const savedPrefix = counter?.prefix || DEFAULT_STAFF_PREFIX;
+  const prefixValue = prefix ?? savedPrefix;
+  const prefixOk = /^[A-Z]{1,4}$/.test(prefixValue);
+  const dirty =
+    inst.name !== (institution?.name || '') || inst.address !== (institution?.address || '') || me.name !== (profile?.name || '') ||
+    me.phone !== (profile?.phone || '') || prefixValue !== savedPrefix;
 
   const save = async () => {
-    await backend.write([{ type: 'merge', path: ['meta', 'institution'], data: inst }]);
+    if (!prefixOk) return toast('আইডির শুরুতে ১–৪টি ইংরেজি বড় হাতের অক্ষর দিন', 'error');
+    const ops = [{ type: 'merge', path: ['meta', 'institution'], data: inst }];
+    // A new prefix starts its own numbering (e.g. XI001 after T005)
+    if (prefixValue !== savedPrefix) ops.push({ type: 'set', path: STAFF_COUNTER_PATH, data: { prefix: prefixValue, last: 0 } });
+    await backend.write(ops);
     await updateMyProfile(me);
+    setPrefix(null);
     toast('সংরক্ষিত হয়েছে');
-  };
-
-  const resetDemo = async () => {
-    const ok = await confirm({ title: 'ডেমো রিসেট করবেন?', message: 'এই ফোনে করা সব পরিবর্তন মুছে শুরুর ডেমো তথ্য ফিরে আসবে।', confirmText: 'রিসেট', tone: 'danger', icon: RotateCcw });
-    if (ok) await backend.resetDemo();
   };
 
   return (
@@ -757,28 +832,41 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
           </Field>
           <p className="text-[12.5px] text-slate-500">লগইন ইমেইল: {profile?.email}</p>
         </Card>
+        <Card className="space-y-3 p-4">
+          <p className="flex items-center gap-2 text-[15.5px] font-bold text-ink">
+            <IdCard className="h-5 w-5 text-brand-600" /> শিক্ষকের লগইন আইডি
+          </p>
+          <Field label="আইডির শুরু" hint={`পরের শিক্ষকের আইডি হবে ${prefixOk ? formatStaffId(prefixValue, prefixValue === savedPrefix ? Number(counter?.last || 0) + 1 : 1) : '—'} — নম্বর আপনাআপনি বাড়ে`}>
+            <Input
+              value={prefixValue}
+              maxLength={4}
+              onChange={(e) => setPrefix(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+              className="tabular tracking-widest"
+            />
+          </Field>
+        </Card>
         <Card className="p-4">
           <div className="flex items-center gap-3">
-            <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', isDemo ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600')}>
+            <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', isLocal ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600')}>
               <Database className="h-5 w-5" />
             </span>
             <div className="flex-1">
-              <p className="text-[15px] font-bold text-ink">{isDemo ? 'ডেমো মোড' : 'Cloud (Firebase) সংযুক্ত'}</p>
+              <p className="text-[15px] font-bold text-ink">{isLocal ? 'পরীক্ষামূলক ডাটাবেজ' : 'Cloud (Firebase) সংযুক্ত'}</p>
               <p className="text-[12.5px] text-slate-500">
-                {isDemo ? 'সব তথ্য শুধু এই ফোনে। সবাই মিলে ব্যবহারের জন্য Firebase যুক্ত করুন — FIREBASE_SETUP.md দেখুন।' : 'সব শিক্ষকের ফোনে একই তথ্য, ইন্টারনেট ছাড়াও কাজ করে।'}
+                {isLocal ? 'শুধু পরীক্ষার জন্য — তথ্য এই ব্রাউজারেই থাকে। আসল ব্যবহারের জন্য Firebase কী বসান।' : 'সব শিক্ষকের ফোনে একই তথ্য, ইন্টারনেট ছাড়াও কাজ করে।'}
               </p>
             </div>
           </div>
-          {isDemo && (
-            <Button variant="soft-danger" size="sm" icon={RotateCcw} block className="mt-3" onClick={resetDemo}>
-              ডেমো রিসেট করুন
-            </Button>
-          )}
         </Card>
         <Card className="divide-y divide-slate-100 overflow-hidden">
           <button type="button" onClick={onOpenPortal} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
             <UserRound className="h-5 w-5 text-slate-500" />
             <span className="flex-1 text-[15px] font-semibold text-ink">শিক্ষার্থী পোর্টাল দেখুন</span>
+            <ArrowRight className="h-5 w-5 text-slate-300" />
+          </button>
+          <button type="button" onClick={() => setAccount('password')} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+            <KeyRound className="h-5 w-5 text-slate-500" />
+            <span className="flex-1 text-[15px] font-semibold text-ink">পাসওয়ার্ড বদলান</span>
             <ArrowRight className="h-5 w-5 text-slate-300" />
           </button>
           <button type="button" onClick={onSignOut} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-rose-50">
@@ -787,6 +875,7 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
           </button>
         </Card>
       </div>
+      <AccountSheet kind={account} onClose={() => setAccount(null)} />
 
       {dirty && (
         <>

@@ -2,8 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { ArrowLeftRight, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, SearchBar, Avatar, Badge, Button, Field, Input, Checkbox, EmptyState, cx } from './ui';
-import { taka, monthBn, groupBn, METHODS, todayISO } from '../lib/format';
+import { Sheet, SearchBar, RollBadge, Badge, Button, Field, Input, Checkbox, EmptyState, cx } from './ui';
+import { taka, monthBn, studentTags, METHODS, todayISO } from '../lib/format';
 
 export function PaymentSheet() {
   const { payment, closePayment } = useUI();
@@ -24,15 +24,15 @@ function PaymentBody({ initialStudent }) {
   const ctx = useMemo(() => {
     if (!student) return null;
     const currentFee = fees.find((f) => f.studentId === student.id && f.month === settings.currentMonth);
-    const activeFine = fines.find((fn) => fn.studentId === student.id && fn.status === 'Active');
+    const activeFines = fines.filter((fn) => fn.studentId === student.id && fn.due > 0);
     const dueExam = examFees.find((e) => e.studentId === student.id && e.status === 'Due');
     return {
       currentFee,
-      activeFine,
+      activeFines,
       dueExam,
       // No fee row yet for this month -> nothing to settle against (create the month's fees first)
       monthly: currentFee ? Number(currentFee.due || 0) : 0,
-      fine: activeFine ? Number(activeFine.amount) : 0,
+      fine: activeFines.reduce((a, fn) => a + fn.due, 0),
       exam: dueExam ? Number(dueExam.due || dueExam.amount) : 0,
     };
   }, [student, fees, fines, examFees, settings.currentMonth]);
@@ -65,7 +65,7 @@ function PaymentBody({ initialStudent }) {
     setSaving(true);
     const items = [];
     if (sel.monthly && ctx.monthly > 0) items.push({ description: `${settings.currentMonth} ${settings.currentYear} Monthly Fee`, amount: ctx.monthly });
-    if (sel.fine && ctx.fine > 0) items.push({ description: 'Late Fine / Delay Assessment', amount: ctx.fine });
+    if (sel.fine && ctx.fine > 0) items.push({ description: `Fine (${ctx.activeFines.length})`, amount: ctx.fine });
     if (sel.exam && ctx.exam > 0) items.push({ description: ctx.dueExam?.examName || 'Examination Fee', amount: ctx.exam });
     if (items.length === 0 || amount != null) {
       // Custom amount: record it as a single line so the receipt total stays honest
@@ -86,7 +86,7 @@ function PaymentBody({ initialStudent }) {
       trxId: method === 'Cash' ? '' : trxId,
       paymentDate: paidAt.toISOString(),
       feeId: sel.monthly && ctx.currentFee ? ctx.currentFee.id : null,
-      fineId: sel.fine && ctx.activeFine ? ctx.activeFine.id : null,
+      fineIds: sel.fine ? ctx.activeFines.map((fn) => fn.id) : null,
       examFeeId: sel.exam && ctx.dueExam ? ctx.dueExam.id : null,
     });
     setSaving(false);
@@ -122,11 +122,11 @@ function PaymentBody({ initialStudent }) {
           <div className="divide-y divide-slate-100">
             {list.map(({ s, due }) => (
               <button key={s.id} type="button" onClick={() => pick(s)} className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-50">
-                <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={44} />
+                <RollBadge roll={s.roll} seed={s.id} size={44} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15.5px] font-semibold text-ink">{s.name}</p>
                   <p className="text-[13px] text-slate-500">
-                    রোল {s.roll} · {groupBn(s.group)}
+                    {studentTags(s) || s.guardianPhone}
                   </p>
                 </div>
                 {due > 0 ? <Badge tone="red">{taka(due)} বাকি</Badge> : <Badge tone="green">পরিশোধিত</Badge>}
@@ -141,18 +141,18 @@ function PaymentBody({ initialStudent }) {
   const totalDue = calculateStudentTotalDue(student.id);
   const items = [
     { k: 'monthly', label: `${monthBn(settings.currentMonth)} মাসের বেতন${ctx.currentFee?.fine ? ' (জরিমানাসহ)' : ''}`, amt: ctx.monthly },
-    { k: 'fine', label: 'জরিমানা', amt: ctx.fine },
+    { k: 'fine', label: ctx.activeFines.length > 1 ? `জরিমানা (${ctx.activeFines.length}টি)` : 'জরিমানা', amt: ctx.fine },
     { k: 'exam', label: ctx.dueExam?.examName || 'পরীক্ষার ফি', amt: ctx.exam },
   ];
 
   return (
     <div className="space-y-5 pt-1">
       <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5 ring-1 ring-slate-200/70">
-        <Avatar src={student.avatar} name={student.nameEn || student.name} seed={student.id} size={48} />
+        <RollBadge roll={student.roll} seed={student.id} size={48} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-bold text-ink">{student.name}</p>
           <p className="text-[13px] text-slate-500">
-            রোল {student.roll} · মোট বাকি <span className="font-semibold text-rose-600">{taka(totalDue)}</span>
+            মোট বাকি <span className="font-semibold text-rose-600">{taka(totalDue)}</span>
           </p>
         </div>
         {!initialStudent && (

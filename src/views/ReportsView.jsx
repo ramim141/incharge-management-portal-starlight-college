@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Chips, Card, Badge, Button, Progress, Avatar, cx } from '../components/ui';
-import { taka, monthBn, groupBn, fmtDate, todayISO, FEE_STATUS, feeStatus, METHODS, downloadCSV } from '../lib/format';
+import { PageHeader, SelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
+import { taka, monthBn, studentTags, fmtDate, todayISO, FEE_STATUS, feeStatus, METHODS, downloadCSV } from '../lib/format';
 
 export const ReportsView = () => {
-  const { students, fees, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
+  const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
   const { toast, openStudent } = useUI();
   const [type, setType] = useState('monthly');
 
@@ -34,7 +34,18 @@ export const ReportsView = () => {
     .filter((x) => x.st.totalClasses > 0 && x.st.percentage < 75)
     .sort((a, b) => a.st.percentage - b.st.percentage);
 
+  const fineRows = students
+    .map((s) => {
+      const list = fines.filter((f) => f.studentId === s.id);
+      const sum = (k) => list.reduce((a, f) => a + Number(f[k] || 0), 0);
+      return { s, count: list.length, absent: list.filter((f) => f.kind === 'absent').length, amount: sum('amount'), waived: sum('waived'), paid: sum('paid'), due: sum('due') };
+    })
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.due - a.due || a.s.roll - b.s.roll);
+  const fineTotal = (k) => fineRows.reduce((a, r) => a + r[k], 0);
+
   const TITLES = {
+    fines: 'জরিমানার রিপোর্ট',
     monthly: `${monthBn(settings.currentMonth)} ${settings.currentYear} ফি রিপোর্ট`,
     defaulters: 'বকেয়া শিক্ষার্থীর তালিকা',
     attendance: 'কম হাজিরার তালিকা (৭৫% এর নিচে)',
@@ -47,11 +58,17 @@ export const ReportsView = () => {
         ['Roll', 'Name', 'Group', 'Monthly Fee', 'Fine', 'Paid', 'Due', 'Status', 'Reason', 'Note'],
         monthFees.map(({ f, s, st }) => [f.roll, s?.name, s?.group, f.amount, f.fine || 0, f.paid || 0, f.due || 0, st, f.reason || '', f.note || '']),
       );
+    } else if (type === 'fines') {
+      downloadCSV(
+        `${settings.classCode}_Fine_Report.csv`,
+        ['Roll', 'Name', 'Fines', 'Absence Fines', 'Total Fine', 'Waived', 'Paid', 'Due'],
+        fineRows.map((r) => [r.s.roll, r.s.name, r.count, r.absent, r.amount, r.waived, r.paid, r.due]),
+      );
     } else if (type === 'defaulters') {
-      downloadCSV('XI_Defaulters.csv', ['Roll', 'Name', 'Group', 'Guardian Phone', 'Total Due'], defaulters.map(({ s, due }) => [s.roll, s.name, s.group, s.guardianPhone, due]));
+      downloadCSV(`${settings.classCode}_Defaulters.csv`, ['Roll', 'Name', 'Group', 'Guardian Phone', 'Total Due'], defaulters.map(({ s, due }) => [s.roll, s.name, s.group, s.guardianPhone, due]));
     } else {
       downloadCSV(
-        'XI_Low_Attendance.csv',
+        `${settings.classCode}_Low_Attendance.csv`,
         ['Roll', 'Name', 'Group', 'Classes', 'Present', 'Absent', 'Late', 'Leave', 'Attendance %'],
         lowAtt.map(({ s, st }) => [s.roll, s.name, s.group, st.totalClasses, st.present, st.absent, st.late, st.leave, st.percentage]),
       );
@@ -62,13 +79,15 @@ export const ReportsView = () => {
   return (
     <div>
       <PageHeader title="রিপোর্ট" subtitle="হিসাব ও হাজিরার প্রতিবেদন">
-        <Chips
+        <SelectPill
+          label="রিপোর্ট"
           value={type}
           onChange={setType}
           options={[
             { value: 'monthly', label: 'মাসিক ফি' },
             { value: 'defaulters', label: 'বকেয়া', count: defaulters.length },
             { value: 'attendance', label: 'কম হাজিরা', count: lowAtt.length },
+            { value: 'fines', label: 'জরিমানা', count: fineRows.filter((r) => r.due > 0).length },
           ]}
         />
       </PageHeader>
@@ -89,6 +108,36 @@ export const ReportsView = () => {
           <p className="mt-1 text-[15px] font-bold">{TITLES[type]}</p>
           <p className="text-[12px]">তৈরির তারিখ: {fmtDate(todayISO())}</p>
         </div>
+
+        {type === 'fines' && (
+          <>
+            <Card className="p-5">
+              <p className="text-[13px] font-semibold text-slate-500">{TITLES.fines}</p>
+              <div className="mt-3 grid grid-cols-2 gap-y-4">
+                <Kpi label="মোট জরিমানা" value={taka(fineTotal('amount'))} />
+                <Kpi label="মওকুফ" value={taka(fineTotal('waived'))} cls="text-slate-500" />
+                <Kpi label="আদায়" value={taka(fineTotal('paid'))} cls="text-emerald-600" />
+                <Kpi label="বাকি" value={taka(fineTotal('due'))} cls="text-rose-600" />
+              </div>
+            </Card>
+            <Card className="divide-y divide-slate-100 overflow-hidden">
+              {fineRows.length === 0 && <p className="px-4 py-6 text-center text-[14px] text-slate-400">কোনো জরিমানা নেই</p>}
+              {fineRows.map((r) => (
+                <button key={r.s.id} type="button" onClick={() => openStudent(r.s)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+                  <RollBadge roll={r.s.roll} seed={r.s.id} size={38} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[14.5px] font-semibold text-ink">{r.s.name}</span>
+                    <span className="tabular block truncate text-[12px] text-slate-500">
+                      {r.count}টি{r.absent ? ` (অনুপস্থিতি ${r.absent})` : ''} · মোট {taka(r.amount)}
+                      {r.waived ? ` · মওকুফ ${taka(r.waived)}` : ''}
+                    </span>
+                  </span>
+                  <span className={cx('tabular text-[14px] font-bold', r.due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{r.due > 0 ? taka(r.due) : 'পরিশোধিত'}</span>
+                </button>
+              ))}
+            </Card>
+          </>
+        )}
 
         {type === 'monthly' && (
           <>
@@ -151,11 +200,11 @@ export const ReportsView = () => {
             </div>
             {defaulters.map(({ s, due }) => (
               <button key={s.id} type="button" onClick={() => openStudent(s)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-                <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={38} />
+                <RollBadge roll={s.roll} seed={s.id} size={38} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14.5px] font-semibold text-ink">{s.name}</span>
                   <span className="tabular block text-[12.5px] text-slate-500">
-                    রোল {s.roll} · {groupBn(s.group)} · {s.guardianPhone}
+                    {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ')}
                   </span>
                 </span>
                 <span className="tabular text-[15px] font-bold text-rose-600">{taka(due)}</span>
@@ -170,11 +219,11 @@ export const ReportsView = () => {
             {lowAtt.map(({ s, st }) => (
               <button key={s.id} type="button" onClick={() => openStudent(s)} className="w-full px-4 py-3 text-left">
                 <div className="flex items-center gap-3">
-                  <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={38} />
+                  <RollBadge roll={s.roll} seed={s.id} size={38} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14.5px] font-semibold text-ink">{s.name}</span>
                     <span className="tabular block text-[12.5px] text-slate-500">
-                      রোল {s.roll} · উপস্থিত {st.present}/{st.totalClasses} · অনুপস্থিত {st.absent}
+                      উপস্থিত {st.present}/{st.totalClasses} · অনুপস্থিত {st.absent}
                     </span>
                   </span>
                   <Badge tone="red">{st.percentage}%</Badge>

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Copy, Check, CheckCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, Button, Avatar, cx } from './ui';
+import { Sheet, Button, RollBadge, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import { taka, waLink } from '../lib/format';
 
@@ -78,7 +78,7 @@ function Body({ list }) {
                   i === idx ? 'bg-emerald-50 ring-emerald-400' : 'bg-white ring-slate-200',
                 )}
               >
-                <Avatar src={x.avatar} name={x.nameEn || x.name} seed={x.id} size={28} rounded="rounded-full" />
+                <RollBadge roll={x.roll} seed={x.id} size={28} rounded="rounded-full" />
                 <span className="text-[13.5px] font-semibold text-ink">{x.roll}</span>
                 {sent.has(x.id) && <CheckCheck className="h-4 w-4 text-sky-500" />}
               </button>
@@ -88,11 +88,11 @@ function Body({ list }) {
       )}
 
       <div className="flex items-center gap-3">
-        <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={48} />
+        <RollBadge roll={s.roll} seed={s.id} size={48} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-bold text-ink">{s.name}</p>
           <p className="tabular text-[13px] text-slate-500">
-            রোল {s.roll} · {s.guardianPhone}
+            {s.guardianPhone}
           </p>
         </div>
         <div className="text-right">

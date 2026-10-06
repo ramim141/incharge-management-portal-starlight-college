@@ -4,7 +4,7 @@ import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { Sheet, Button } from '../components/ui';
 
 // App-wide UI state: toasts, confirmation sheets and the global sheets
-// (student profile, student form, payment, receipt, WhatsApp) that any screen can open.
+// (student profile, student form, payment, receipt, WhatsApp, fine editor) that any screen can open.
 const UIContext = createContext(null);
 
 export function UIProvider({ children }) {
@@ -17,6 +17,7 @@ export function UIProvider({ children }) {
   const [payment, setPayment] = useState(null); // { student: obj | null }
   const [receipt, setReceipt] = useState(null); // { payment, fresh }
   const [whatsapp, setWhatsapp] = useState(null); // students[]
+  const [fineId, setFineId] = useState(null);
 
   const toast = useCallback((message, type = 'success') => {
     const id = ++idRef.current;
@@ -53,8 +54,11 @@ export function UIProvider({ children }) {
       whatsapp,
       openWhatsApp: (list) => setWhatsapp(Array.isArray(list) ? list : [list]),
       closeWhatsApp: () => setWhatsapp(null),
+      fineId,
+      openFine: (f) => setFineId(f?.id ?? f),
+      closeFine: () => setFineId(null),
     }),
-    [toast, confirm, studentId, studentForm, payment, receipt, whatsapp],
+    [toast, confirm, studentId, studentForm, payment, receipt, whatsapp, fineId],
   );
 
   const ICON = { success: CheckCircle2, error: AlertCircle, info: Info };

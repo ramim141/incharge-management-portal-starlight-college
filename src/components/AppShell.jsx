@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import {
   House, Users, CalendarCheck, LayoutGrid, Plus, CreditCard, TriangleAlert, ClipboardList,
   ReceiptText, ChartColumn, Settings, LogOut, UserRound, ChevronRight, Database, ArrowLeft, Building2,
+  KeyRound, Mail,
 } from 'lucide-react';
+import { AccountSheet } from './AccountSheets';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { useBackHandler } from '../lib/backstack';
@@ -29,6 +31,11 @@ export function AppShell({ children }) {
   const { activeTab, setActiveTab, overdueCount, settings, isFirestoreConnected, isPrincipal, exitClass, signOut, openPortal, profile } = useApp();
   const { openPayment, confirm } = useUI();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [account, setAccount] = useState(null); // 'password' | 'email'
+  const openAccount = (kind) => {
+    setMenuOpen(false);
+    setTimeout(() => setAccount(kind), 80);
+  };
 
   // Back from any section returns to Home before leaving the app
   useBackHandler(activeTab !== 'dashboard', () => setActiveTab('dashboard'));
@@ -178,11 +185,26 @@ export function AppShell({ children }) {
               <span className="flex-1 text-[15px] font-semibold text-ink">শিক্ষার্থী পোর্টাল দেখুন</span>
               <ChevronRight className="h-5 w-5 text-slate-300" />
             </button>
+            <button type="button" onClick={() => openAccount('password')} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+              <KeyRound className="h-5 w-5 text-slate-500" />
+              <span className="flex-1 text-[15px] font-semibold text-ink">পাসওয়ার্ড বদলান</span>
+              <ChevronRight className="h-5 w-5 text-slate-300" />
+            </button>
+            {!isPrincipal && (
+              <button type="button" onClick={() => openAccount('email')} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+                <Mail className="h-5 w-5 text-slate-500" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-ink">রিকভারি ইমেইল</span>
+                  <span className="block truncate text-[12.5px] text-slate-500">পাসওয়ার্ড ভুলে গেলে রিসেট লিংক যাবে</span>
+                </span>
+                <ChevronRight className="h-5 w-5 text-slate-300" />
+              </button>
+            )}
             <div className="flex items-center gap-3 px-4 py-3.5">
               <Database className="h-5 w-5 text-slate-500" />
               <span className="flex-1 text-[15px] font-semibold text-ink">ডাটাবেজ</span>
               <span className={cx('text-[13px] font-semibold', isFirestoreConnected ? 'text-emerald-600' : 'text-amber-600')}>
-                {isFirestoreConnected ? '● Cloud সংযুক্ত' : '● ডেমো (এই ফোনে)'}
+                {isFirestoreConnected ? '● Cloud সংযুক্ত' : '● পরীক্ষামূলক (এই ব্রাউজারে)'}
               </span>
             </div>
             <button type="button" onClick={logout} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-rose-50">
@@ -192,6 +214,7 @@ export function AppShell({ children }) {
           </div>
         </div>
       </Sheet>
+      <AccountSheet kind={account} onClose={() => setAccount(null)} />
     </>
   );
 }

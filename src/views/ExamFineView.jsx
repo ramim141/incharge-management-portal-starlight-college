@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, ClipboardList, Gavel, ChevronDown, CheckCircle2, Undo2, CalendarDays } from 'lucide-react';
+import { Plus, ClipboardList, Gavel, ChevronDown, CheckCircle2, Undo2, CalendarDays, Pencil } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Segmented, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, cx, CARD_GRID } from '../components/ui';
-import { taka, fmtDate, groupBn } from '../lib/format';
+import { PageHeader, Segmented, Card, RollBadge, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SearchBar, FilterButton, cx, CARD_GRID } from '../components/ui';
+import { taka, fmtDate, studentTags, FINE_STATUS } from '../lib/format';
 
 export const ExamFineView = () => {
   const [tab, setTab] = useState('exams');
@@ -14,7 +14,7 @@ export const ExamFineView = () => {
     <div>
       <PageHeader
         title="পরীক্ষা ও জরিমানা"
-        subtitle={tab === 'exams' ? 'পরীক্ষার ফি আদায়ের অবস্থা' : 'জরিমানা দিন বা মওকুফ করুন'}
+        subtitle={tab === 'exams' ? 'পরীক্ষার ফি আদায়ের অবস্থা' : 'জরিমানা দিন, বদলান বা মওকুফ করুন'}
         actions={<IconButton icon={Plus} label={tab === 'exams' ? 'নতুন পরীক্ষা' : 'নতুন জরিমানা'} onClick={() => (tab === 'exams' ? setNewExam(true) : setNewFine(true))} />}
       >
         <Segmented
@@ -132,10 +132,9 @@ function Exams({ onNew }) {
                   const s = students.find((x) => x.id === e.studentId || x.roll === Number(e.roll));
                   return (
                     <div key={e.id} className="flex items-center gap-3 px-4 py-3">
-                      <Avatar src={s?.avatar} name={s?.nameEn || s?.name || String(e.roll)} seed={e.studentId} size={38} />
+                      <RollBadge roll={s?.roll ?? e.roll} seed={e.studentId} size={38} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[14.5px] font-semibold text-ink">{s?.name || e.studentName || `রোল ${e.roll}`}</p>
-                        <p className="text-[12px] text-slate-500">রোল {e.roll}</p>
                       </div>
                       {e.status === 'Paid' ? (
                         <span className="flex items-center gap-1 text-[13px] font-semibold text-emerald-600">
@@ -158,17 +157,33 @@ function Exams({ onNew }) {
   );
 }
 
+const FINE_FILTER_TITLE = { Active: 'বাকি জরিমানা', Waived: 'মওকুফ করা জরিমানা', Paid: 'পরিশোধিত জরিমানা', All: 'সব জরিমানা' };
+
 function Fines({ onNew }) {
-  const { fines, students, waiveFine } = useApp();
-  const { confirm, toast } = useUI();
+  const { fines, students, waiveFine, settings } = useApp();
+  const { confirm, toast, openFine } = useUI();
+  const [filters, setFilters] = useState({ status: 'Active' });
+  const filter = filters.status;
+  const [query, setQuery] = useState('');
+
+  const byId = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
   const active = fines.filter((f) => f.status === 'Active');
-  const activeTotal = active.reduce((a, f) => a + Number(f.amount || 0), 0);
-  const sorted = [...fines].sort((a, b) => (a.status === b.status ? String(b.date).localeCompare(String(a.date)) : a.status === 'Active' ? -1 : 1));
+  const activeTotal = active.reduce((a, f) => a + f.due, 0);
+  const waivedTotal = fines.reduce((a, f) => a + f.waived, 0);
+
+  const q = query.trim().toLowerCase();
+  const list = fines
+    .filter((f) => filter === 'All' || f.status === filter)
+    .filter((f) => {
+      if (!q) return true;
+      const s = byId.get(f.studentId);
+      return String(s?.roll ?? f.roll).includes(q) || (s?.name || '').toLowerCase().includes(q) || (s?.nameEn || '').toLowerCase().includes(q);
+    });
 
   const waive = async (f, s) => {
     const ok = await confirm({
       title: 'জরিমানা মওকুফ করবেন?',
-      message: `${s?.name || `রোল ${f.roll}`} — ${taka(f.amount)} (${f.reason})`,
+      message: `${s?.name || `রোল ${f.roll}`} — ${taka(f.due)} (${f.reason}) · পরে এডিট করে ফেরানো যাবে`,
       confirmText: 'মওকুফ করুন',
       icon: Undo2,
     });
@@ -182,6 +197,7 @@ function Fines({ onNew }) {
       <EmptyState
         icon={Gavel}
         title="কোনো জরিমানা নেই"
+        text={`হাজিরায় কাউকে অনুপস্থিত দিলে আপনাআপনি ${taka(settings.absentFine)} জরিমানা হবে`}
         action={
           <Button icon={Plus} variant="danger" onClick={onNew}>
             জরিমানা দিন
@@ -191,6 +207,8 @@ function Fines({ onNew }) {
     );
   }
 
+  const count = (st) => fines.filter((f) => st === 'All' || f.status === st).length;
+
   return (
     <>
       <Card className="mb-3 flex items-center gap-3 p-4">
@@ -198,40 +216,81 @@ function Fines({ onNew }) {
           <Gavel className="h-5 w-5" />
         </span>
         <div className="flex-1">
-          <p className="text-[12.5px] text-slate-500">সক্রিয় জরিমানা · {active.length}টি</p>
+          <p className="text-[12.5px] text-slate-500">বাকি জরিমানা · {active.length}টি</p>
           <p className="tabular text-[22px] font-extrabold text-rose-600">{taka(activeTotal)}</p>
         </div>
+        {waivedTotal > 0 && (
+          <div className="text-right">
+            <p className="text-[12px] text-slate-500">মোট মওকুফ</p>
+            <p className="tabular text-[15px] font-bold text-slate-600">{taka(waivedTotal)}</p>
+          </div>
+        )}
       </Card>
-      <div className={CARD_GRID}>
-        {sorted.map((f) => {
-          const s = students.find((x) => x.id === f.studentId || x.roll === Number(f.roll));
-          const isActive = f.status === 'Active';
-          return (
-            <Card key={f.id} className={cx('p-4', !isActive && 'opacity-70')}>
-              <div className="flex items-center gap-3">
-                <Avatar src={s?.avatar} name={s?.nameEn || s?.name || String(f.roll)} seed={f.studentId} size={42} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold text-ink">{s?.name || `রোল ${f.roll}`}</p>
-                  <p className="text-[12.5px] text-slate-500">
-                    রোল {f.roll} · {fmtDate(f.date)}
-                  </p>
-                </div>
-                <p className={cx('tabular text-[17px] font-extrabold', isActive ? 'text-rose-600' : 'text-slate-400 line-through')}>{taka(f.amount)}</p>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate rounded-xl bg-slate-50 px-3 py-2 text-[13.5px] text-slate-600">{f.reason}</p>
-                {isActive ? (
-                  <Button size="sm" variant="secondary" icon={Undo2} onClick={() => waive(f, s)}>
-                    মওকুফ
-                  </Button>
-                ) : (
-                  <Badge tone="slate">মওকুফকৃত</Badge>
-                )}
-              </div>
-            </Card>
-          );
-        })}
+
+      <div className="flex gap-2">
+        <SearchBar className="flex-1" value={query} onChange={setQuery} placeholder="রোল বা নাম দিয়ে খুঁজুন" />
+        <FilterButton
+          value={filters}
+          defaults={{ status: 'Active' }}
+          onChange={setFilters}
+          groups={[
+            {
+              key: 'status',
+              label: 'অবস্থা',
+              options: [
+                { value: 'Active', label: 'বাকি', count: count('Active') },
+                { value: 'Waived', label: 'মওকুফ', count: count('Waived') },
+                { value: 'Paid', label: 'পরিশোধিত', count: count('Paid') },
+                { value: 'All', label: 'সব', count: count('All') },
+              ],
+            },
+          ]}
+        />
       </div>
+      <p className="mb-2 mt-3 text-[12.5px] text-slate-500">
+        {FINE_FILTER_TITLE[filter]} · ট্যাপ করে বদলান বা মওকুফ করুন
+      </p>
+
+      {list.length === 0 ? (
+        <EmptyState icon={Gavel} title="এই তালিকায় কিছু নেই" />
+      ) : (
+        <div className={CARD_GRID}>
+          {list.map((f) => {
+            const s = byId.get(f.studentId);
+            const isActive = f.status === 'Active';
+            return (
+              <Card key={f.id} className={cx('p-4', !isActive && 'opacity-75')}>
+                <button type="button" onClick={() => openFine(f.id)} className="flex w-full items-center gap-3 text-left">
+                  <RollBadge roll={s?.roll ?? f.roll} seed={f.studentId} size={42} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold text-ink">{s?.name || `রোল ${f.roll}`}</p>
+                    <p className="text-[12.5px] text-slate-500">
+                      {fmtDate(f.date)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={cx('tabular text-[17px] font-extrabold', isActive ? 'text-rose-600' : 'text-slate-400 line-through')}>
+                      {taka(isActive ? f.due : f.amount)}
+                    </p>
+                    {f.waived > 0 && isActive && <p className="tabular text-[11.5px] text-slate-500">মওকুফ {taka(f.waived)}</p>}
+                  </div>
+                </button>
+                <div className="mt-3 flex items-center gap-2">
+                  <p className="min-w-0 flex-1 truncate rounded-xl bg-slate-50 px-3 py-2 text-[13.5px] text-slate-600">{f.reason}</p>
+                  <Button size="sm" variant="ghost" icon={Pencil} className="w-10 px-0" aria-label="এডিট" onClick={() => openFine(f.id)} />
+                  {isActive ? (
+                    <Button size="sm" variant="secondary" icon={Undo2} onClick={() => waive(f, s)}>
+                      মওকুফ
+                    </Button>
+                  ) : (
+                    <Badge tone={FINE_STATUS[f.status].tone}>{FINE_STATUS[f.status].bn}</Badge>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }
@@ -309,10 +368,10 @@ function NewFineForm({ onDone }) {
         <div className={cx('-mt-2 flex items-center gap-3 rounded-2xl p-3', s ? 'bg-slate-50' : 'bg-rose-50')}>
           {s ? (
             <>
-              <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={40} />
+              <RollBadge roll={s.roll} seed={s.id} size={40} />
               <div>
                 <p className="text-[15px] font-semibold text-ink">{s.name}</p>
-                <p className="text-[12.5px] text-slate-500">{groupBn(s.group)}</p>
+                <p className="text-[12.5px] text-slate-500">{studentTags(s) || `রোল ${s.roll}`}</p>
               </div>
             </>
           ) : (
@@ -339,7 +398,7 @@ function NewFineForm({ onDone }) {
         <Input value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <div className="-mt-2 flex flex-wrap gap-2">
-        {['বিলম্ব জরিমানা', 'দেরিতে উপস্থিতি', 'ইউনিফর্ম নেই', 'শৃঙ্খলা ভঙ্গ'].map((r) => (
+        {['বিলম্ব জরিমানা', 'অনুপস্থিতি জরিমানা', 'দেরিতে উপস্থিতি', 'ইউনিফর্ম নেই', 'শৃঙ্খলা ভঙ্গ'].map((r) => (
           <button key={r} type="button" onClick={() => setReason(r)} className="press rounded-full bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600">
             {r}
           </button>

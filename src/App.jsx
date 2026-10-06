@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { GraduationCap, LogOut, UserX, School } from 'lucide-react';
+import { GraduationCap, LogOut, UserX, School, Settings2, KeyRound, Mail } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { UIProvider, useUI } from './context/UIContext';
-import { backend, errorText } from './backend';
+import { backend, backendMissing, errorText } from './backend';
 import { AppShell } from './components/AppShell';
 import { PaymentSheet } from './components/PaymentSheet';
 import { ReceiptSheet } from './components/ReceiptSheet';
 import { WhatsAppSheet } from './components/WhatsAppSheet';
+import { FineSheet } from './components/FineSheet';
 import { StudentDetailSheet, StudentFormSheet } from './components/StudentSheets';
+import { ForcePasswordChange, AccountSheet } from './components/AccountSheets';
 import { Button } from './components/ui';
 import { StudentPortal } from './views/StudentPortal';
 import { AdminLogin } from './views/AdminLogin';
@@ -50,7 +52,8 @@ export function Splash({ text = 'লোড হচ্ছে…' }) {
   );
 }
 
-function Notice({ icon: Icon, title, text, onSignOut }) {
+function Notice({ icon: Icon, title, text, onSignOut, account }) {
+  const [sheet, setSheet] = useState(null);
   return (
     <div className="grid min-h-dvh place-items-center bg-canvas px-6">
       <div className="max-w-sm text-center">
@@ -59,10 +62,21 @@ function Notice({ icon: Icon, title, text, onSignOut }) {
         </div>
         <h1 className="mt-5 text-[20px] font-extrabold text-ink">{title}</h1>
         <p className="mt-2 text-[14.5px] leading-relaxed text-slate-500">{text}</p>
-        <Button variant="secondary" icon={LogOut} className="mt-6" onClick={onSignOut}>
+        {account && (
+          <div className="mt-6 flex justify-center gap-2">
+            <Button variant="secondary" size="sm" icon={KeyRound} onClick={() => setSheet('password')}>
+              পাসওয়ার্ড বদলান
+            </Button>
+            <Button variant="secondary" size="sm" icon={Mail} onClick={() => setSheet('email')}>
+              রিকভারি ইমেইল
+            </Button>
+          </div>
+        )}
+        <Button variant="secondary" icon={LogOut} className={account ? 'mt-3' : 'mt-6'} onClick={onSignOut}>
           লগআউট
         </Button>
       </div>
+      {account && <AccountSheet kind={sheet} onClose={() => setSheet(null)} />}
     </div>
   );
 }
@@ -92,6 +106,7 @@ function ClassViews() {
       <PaymentSheet />
       <ReceiptSheet />
       <WhatsAppSheet />
+      <FineSheet />
     </>
   );
 }
@@ -130,6 +145,8 @@ function Root() {
     );
   }
 
+  if (p.mustChangePassword) return <ForcePasswordChange onSignOut={signOut} />;
+
   if (p.role === 'superadmin' && !visitingClass) {
     return <PrincipalApp onOpenClass={setVisitingClass} onOpenPortal={() => setView('portal')} onSignOut={signOut} />;
   }
@@ -142,6 +159,7 @@ function Root() {
         title={`স্বাগতম, ${p.name || ''}`}
         text="আপনাকে এখনো কোনো ক্লাসের দায়িত্ব দেওয়া হয়নি। অধ্যক্ষ ক্লাস দিলে এখানে আপনাআপনি দেখা যাবে।"
         onSignOut={signOut}
+        account
       />
     );
   }
@@ -161,7 +179,25 @@ function Root() {
   );
 }
 
+/** Shown when the build has no Firebase keys (see .env.example / FIREBASE_SETUP.md) */
+function SetupPending() {
+  return (
+    <div className="grid min-h-dvh place-items-center bg-canvas px-6">
+      <div className="max-w-sm text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-amber-50 text-amber-600">
+          <Settings2 className="h-8 w-8" />
+        </div>
+        <h1 className="mt-4 text-[20px] font-extrabold text-ink">Firebase সেটআপ বাকি</h1>
+        <p className="mt-2 text-[14.5px] leading-relaxed text-slate-500">
+          অ্যাপটি চালু করতে প্রজেক্টের <span className="font-mono text-[13px] text-ink">.env.local</span> ফাইলে Firebase কী বসিয়ে আবার build করুন। ধাপগুলো FIREBASE_SETUP.md ফাইলে আছে।
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  if (backendMissing) return <SetupPending />;
   return (
     <AuthProvider>
       <UIProvider>

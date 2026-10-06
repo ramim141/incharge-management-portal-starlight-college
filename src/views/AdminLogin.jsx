@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowLeft, Zap, Building2, UserRound, Phone } from 'lucide-react';
+import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowLeft, Building2, UserRound, Phone, IdCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
-import { isDemo, errorText } from '../backend';
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../backend/demoSeed';
+import { errorText } from '../backend';
 import { Button, Field, Input, cx } from '../components/ui';
 
 const Hero = ({ title, subtitle, onPortal }) => (
@@ -52,7 +51,7 @@ export const AdminLogin = ({ onPortal }) => {
   const [shake, setShake] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  if (needsSetup && !isDemo) return <FirstSetup onPortal={onPortal} />;
+  if (needsSetup) return <FirstSetup onPortal={onPortal} />;
 
   const fail = (msg) => {
     setError(msg);
@@ -64,7 +63,7 @@ export const AdminLogin = ({ onPortal }) => {
     e?.preventDefault();
     const em = creds?.email ?? email;
     const pw = creds?.password ?? password;
-    if (!em || !pw) return fail('ইমেইল ও পাসওয়ার্ড দিন');
+    if (!em || !pw) return fail('লগইন আইডি ও পাসওয়ার্ড দিন');
     setBusy(true);
     try {
       await signIn(em, pw);
@@ -76,10 +75,10 @@ export const AdminLogin = ({ onPortal }) => {
   };
 
   const forgot = async () => {
-    if (!email) return fail('আগে আপনার ইমেইল লিখুন');
+    if (!email) return fail('আগে আপনার লগইন আইডি বা ইমেইল লিখুন');
     try {
-      await resetPassword(email);
-      toast(`${email} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
+      const sentTo = await resetPassword(email);
+      toast(`${sentTo} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
     } catch (err) {
       fail(errorText(err));
     }
@@ -90,8 +89,20 @@ export const AdminLogin = ({ onPortal }) => {
       <Hero title="শিক্ষক লগইন" subtitle={institution?.name || 'অধ্যক্ষ ও ক্লাস ইনচার্জদের জন্য'} onPortal={onPortal} />
 
       <form onSubmit={login} className={cx('mt-7 space-y-4 rounded-[28px] bg-white p-5 shadow-xl', shake && 'animate-shake')}>
-        <Field label="ইমেইল">
-          <IconInput icon={Mail} type="email" inputMode="email" autoComplete="username" autoCapitalize="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu.bd" />
+        <Field label="লগইন আইডি" hint="শিক্ষক: আইডি (যেমন T001) · অধ্যক্ষ: ইমেইল">
+          <IconInput
+            icon={email.includes('@') ? Mail : IdCard}
+            autoComplete="username"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEmail(v.includes('@') ? v : v.toUpperCase());
+            }}
+            placeholder="T001"
+            className="tabular"
+          />
         </Field>
         <Field label="পাসওয়ার্ড" error={error}>
           <IconInput
@@ -119,37 +130,10 @@ export const AdminLogin = ({ onPortal }) => {
         <Button type="submit" size="lg" block disabled={busy}>
           {busy ? 'যাচাই হচ্ছে…' : 'প্রবেশ করুন'}
         </Button>
-        {!isDemo && (
-          <button type="button" onClick={forgot} className="block w-full text-center text-[13.5px] font-semibold text-brand-600">
-            পাসওয়ার্ড ভুলে গেছেন?
-          </button>
-        )}
+        <button type="button" onClick={forgot} className="block w-full text-center text-[13.5px] font-semibold text-brand-600">
+          পাসওয়ার্ড ভুলে গেছেন?
+        </button>
       </form>
-
-      {isDemo && (
-        <div className="mt-5 rounded-3xl bg-white/80 p-4 ring-1 ring-slate-200">
-          <div className="mb-3 flex items-center gap-2 text-[13px] text-slate-600">
-            <Zap className="h-4 w-4 text-amber-500" />
-            ডেমো অ্যাকাউন্ট — ট্যাপ করলেই প্রবেশ (পাসওয়ার্ড <span className="tabular font-bold text-ink">{DEMO_PASSWORD}</span>)
-          </div>
-          <div className="space-y-2">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button
-                key={a.email}
-                type="button"
-                onClick={() => login(null, { email: a.email, password: DEMO_PASSWORD })}
-                className="press flex w-full items-center gap-3 rounded-2xl bg-white px-4 py-3 text-left ring-1 ring-slate-200"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[14.5px] font-semibold text-ink">{a.label}</span>
-                  <span className="block truncate text-[12.5px] text-slate-500">{a.email}</span>
-                </span>
-                <ArrowLeft className="h-4 w-4 rotate-180 text-slate-300" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </Shell>
   );
 };
