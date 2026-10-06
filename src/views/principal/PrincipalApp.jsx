@@ -43,7 +43,8 @@ export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
   useEffect(() => {
     if (!classes || classIndex === undefined) return;
     const next = buildClassIndex(classes);
-    if (JSON.stringify(next) !== JSON.stringify(classIndex?.classes || [])) {
+    // Also write an empty list once, so the portal knows the list exists (no class-code box)
+    if (classIndex === null || JSON.stringify(next) !== JSON.stringify(classIndex.classes || [])) {
       backend.write([{ type: 'set', path: CLASS_INDEX_PATH, data: { classes: next } }]);
     }
   }, [classes, classIndex]);
@@ -524,9 +525,22 @@ function TeacherForm({ classes, users, onDone }) {
       // Skip any number already taken (e.g. created from another phone at the same time)
       let n = serial;
       while (await backend.getDoc(loginIdPath(formatStaffId(prefix, n)))) n += 1;
-      const id = formatStaffId(prefix, n);
-      const email = recovery || staffEmail(id);
-      const uid = await backend.createAccount(email, f.password, { secondary: true });
+      let id;
+      let email;
+      let uid;
+      // An earlier attempt may have created a login for this ID and then failed to save — that
+      // address is taken, so move on to the next number instead of failing every time
+      for (let attempt = 0; ; attempt += 1) {
+        id = formatStaffId(prefix, n);
+        email = recovery || staffEmail(id);
+        try {
+          uid = await backend.createAccount(email, f.password, { secondary: true });
+          break;
+        } catch (e) {
+          if (e?.code !== 'auth/email-already-in-use' || recovery || attempt >= 5) throw e;
+          n += 1;
+        }
+      }
       const user = {
         id: uid, role: 'incharge', loginId: id, name: f.name.trim(), email, phone: f.phone.trim(), designation: f.designation.trim(),
         classId: null, active: true, mustChangePassword: true,
