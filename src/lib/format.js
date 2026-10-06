@@ -74,13 +74,38 @@ export const GROUPS = [
   { id: 'Business Studies', bn: 'ব্যবসায় শিক্ষা' },
   { id: 'Humanities', bn: 'মানবিক' },
 ];
-export const groupBn = (id) => GROUPS.find((g) => g.id === id)?.bn || id || '—';
+export const GENDERS = [
+  { id: 'Male', bn: 'ছাত্র' },
+  { id: 'Female', bn: 'ছাত্রী' },
+];
+
+// Each in-charge names their own departments and sections (class settings). The class screen
+// registers them here so every label helper below shows the teacher's own names.
+let labels = { group: {}, section: {} };
+export const setClassLabels = ({ departments = [], sections = [] } = {}) => {
+  labels = {
+    group: Object.fromEntries(departments.map((d) => [d.id, d.bn])),
+    section: Object.fromEntries(sections.map((d) => [d.id, d.bn])),
+  };
+};
+
+export const groupBn = (id) => (id ? labels.group[id] || GROUPS.find((g) => g.id === id)?.bn || id : '');
+export const sectionBn = (id) => (id ? labels.section[id] || id : '');
+export const genderBn = (id) => GENDERS.find((g) => g.id === id)?.bn || '';
+/** "বিজ্ঞান · ক শাখা" — whatever of department / section the student has */
+export const studentTags = (s) => [groupBn(s?.group), sectionBn(s?.section)].filter(Boolean).join(' · ');
 
 export const FEE_STATUS = {
   Paid: { bn: 'পরিশোধিত', tone: 'green' },
   Partial: { bn: 'আংশিক', tone: 'amber' },
   Due: { bn: 'বাকি', tone: 'amber' },
   Overdue: { bn: 'মেয়াদোত্তীর্ণ', tone: 'red' },
+};
+
+export const FINE_STATUS = {
+  Active: { bn: 'বাকি', tone: 'red' },
+  Paid: { bn: 'পরিশোধিত', tone: 'green' },
+  Waived: { bn: 'মওকুফ', tone: 'slate' },
 };
 
 export const ATT_STATUS = {

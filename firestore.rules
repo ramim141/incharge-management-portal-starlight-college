@@ -3,10 +3,11 @@ rules_version = '2';
 // Server-side access control. The app hides other classes in the UI, but THIS is what
 // actually stops a teacher from reading or changing another teacher's class.
 //
-//   principal (role: superadmin) → everything
+//   principal (role: superadmin) → everything (signs in with email)
+//   teachers sign in with a login ID (T001) looked up in loginIds/{ID}
 //   in-charge (role: incharge)   → only classes/{their classId} and its sub-collections
 //   students (not signed in)     → only a portal/{key} doc whose key they can compute
-//                                  from their Student ID + PIN (get only, never list)
+//                                  from class + roll + PIN (get only, never list)
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -35,6 +36,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /meta/classIndex {
+      allow read: if true;  // class names for the portal's class picker (no student data)
+      allow write: if isPrincipal();
+    }
+
+    match /meta/staffCounter {
+      allow read, write: if isPrincipal();  // last teacher login-ID number + prefix
+    }
+
     match /meta/owner {
       allow get: if true;   // the login screen checks whether first-run setup is needed
       allow list: if false;
@@ -47,8 +57,11 @@ service cloud.firestore {
       allow list: if isPrincipal();
       allow create: if isPrincipal()
         || (isBootstrapping() && request.auth.uid == uid && request.resource.data.role == 'superadmin');
-      // Teachers may edit their own name/phone/designation — never role, class or active
-      allow update: if isPrincipal() || (request.auth.uid == uid && onlyChanges(['name', 'phone', 'designation']));
+      // Teachers may edit their own name/phone/designation and account fields (after changing their
+      // password or linking a recovery email) — never role, class, login ID or active
+      allow update: if isPrincipal()
+        || (request.auth.uid == uid
+            && onlyChanges(['name', 'phone', 'designation', 'mustChangePassword', 'email', 'pendingEmail']));
       allow delete: if isPrincipal();
     }
 
@@ -67,12 +80,24 @@ service cloud.firestore {
       }
     }
 
+    // Teacher login ID (T001) → the account's email, so teachers can sign in with the ID.
+    // Read one by exact ID only (never list); the owner may update where their login email points.
+    match /loginIds/{id} {
+      allow get: if true;
+      allow list: if false;
+      allow create, delete: if isPrincipal();
+      allow update: if isPrincipal()
+        || (signedIn() && resource.data.uid == request.auth.uid && onlyChanges(['email', 'pendingEmail']));
+    }
+
     match /portal/{key} {
       allow get: if true;
       allow list: if false;
       allow create: if canManage(request.resource.data.classId);
       allow update: if canManage(resource.data.classId) && canManage(request.resource.data.classId);
-      allow delete: if canManage(resource.data.classId);
+      // Deleting a record that was never written is a no-op; allow it so a batch (e.g. removing a
+      // student before their portal record first synced) doesn't fail as a whole
+      allow delete: if signedIn() && (resource == null || canManage(resource.data.classId));
     }
 
     match /{document=**} {

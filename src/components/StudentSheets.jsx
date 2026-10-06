@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
   Phone, Pencil, Wallet, Trash2, UserRound, MapPin, CalendarDays, KeyRound, Hash, Users, Eye, EyeOff, ReceiptText,
-  Camera,
+  ChevronRight,
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, Avatar, Badge, Button, Segmented, InfoRow, Ring, Field, Input, Chips, cx } from './ui';
+import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import {
-  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeStatus, ATT_STATUS, ATT_ORDER, GROUPS, waLink, ACADEMIC_MONTHS, todayISO,
+  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
 
 /* ───────────────────────── Student profile (admin) ───────────────────────── */
@@ -26,9 +26,9 @@ export function StudentDetailSheet() {
 
 function StudentDetail({ student: s }) {
   const {
-    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent,
+    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor,
   } = useApp();
-  const { openPayment, openStudentForm, openWhatsApp, openReceipt, confirm, toast, closeStudent } = useUI();
+  const { openPayment, openStudentForm, openWhatsApp, openReceipt, openFine, confirm, toast, closeStudent } = useUI();
   const [tab, setTab] = useState('fees');
   const [showPin, setShowPin] = useState(false);
 
@@ -79,12 +79,13 @@ function StudentDetail({ student: s }) {
   return (
     <div className="pt-1">
       <div className="flex flex-col items-center text-center">
-        <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={84} rounded="rounded-[28px]" className="shadow-lg" />
+        <RollBadge roll={s.roll} seed={s.id} size={84} rounded="rounded-[28px]" className="shadow-lg" />
         <h2 className="mt-3 text-[21px] font-extrabold leading-tight text-ink">{s.name}</h2>
         {s.nameEn && <p className="text-[13.5px] text-slate-500">{s.nameEn}</p>}
         <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-          <Badge tone="brand">রোল {s.roll}</Badge>
-          <Badge tone="slate">{groupBn(s.group)}</Badge>
+          {groupBn(s.group) && <Badge tone="slate">{groupBn(s.group)}</Badge>}
+          {sectionBn(s.section) && <Badge tone="slate">{sectionBn(s.section)}</Badge>}
+          {settings.useGender !== false && genderBn(s.gender) && <Badge tone="slate">{genderBn(s.gender)}</Badge>}
           {s.status === 'inactive' && <Badge tone="red">নিষ্ক্রিয়</Badge>}
         </div>
       </div>
@@ -192,12 +193,22 @@ function StudentDetail({ student: s }) {
           {sFines.length > 0 && (
             <Group title="জরিমানা">
               {sFines.map((f) => (
-                <Row key={f.id} title={f.reason} sub={fmtDate(f.date)}>
-                  <p className={cx('tabular text-[14px] font-bold', f.status === 'Active' ? 'text-rose-600' : 'text-slate-400 line-through')}>
-                    {taka(f.amount)}
-                  </p>
-                  <Badge tone={f.status === 'Active' ? 'red' : 'slate'}>{f.status === 'Active' ? 'সক্রিয়' : 'মওকুফ'}</Badge>
-                </Row>
+                <button key={f.id} type="button" onClick={() => openFine(f.id)} className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-50">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-semibold text-ink">{f.reason}</p>
+                    <p className="tabular text-[12.5px] text-slate-500">
+                      {fmtDate(f.date)}
+                      {f.waived > 0 && f.status === 'Active' ? ` · মওকুফ ${taka(f.waived)}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <p className={cx('tabular text-[14px] font-bold', f.status === 'Active' ? 'text-rose-600' : 'text-slate-400 line-through')}>
+                      {taka(f.status === 'Active' ? f.due : f.amount)}
+                    </p>
+                    <Badge tone={FINE_STATUS[f.status].tone}>{FINE_STATUS[f.status].bn}</Badge>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                </button>
               ))}
             </Group>
           )}
@@ -255,6 +266,11 @@ function StudentDetail({ student: s }) {
             <InfoRow icon={MapPin} label="ঠিকানা" value={s.address} />
             <InfoRow icon={CalendarDays} label="ভর্তির তারিখ" value={fmtDate(s.admissionDate)} />
             <InfoRow icon={Wallet} label="মাসিক বেতন" value={taka(s.monthlyFee || settings.defaultMonthlyFee)} />
+            <InfoRow
+              icon={CalendarDays}
+              label="অনুপস্থিতির জরিমানা (প্রতি দিন)"
+              value={`${taka(absenceFineFor(s))}${s.absentFine === '' || s.absentFine == null ? ' · ক্লাসের নিয়ম' : ''}`}
+            />
             <div className="flex items-center gap-3 py-3">
               <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-500">
                 <KeyRound className="h-[18px] w-[18px]" />
@@ -278,10 +294,10 @@ function StudentDetail({ student: s }) {
               rel="noopener noreferrer"
               href={waLink(
                 s.guardianPhone,
-                `প্রিয় অভিভাবক,\n${s.name}-এর তথ্য (বেতন, হাজিরা, রশিদ) অনলাইনে দেখতে:\n${window.location.origin}\n\nস্টুডেন্ট আইডি: ${s.studentId}\nপিন: ${s.pin}\n\nপিন গোপন রাখুন।\n${settings.inchargeName}\nক্লাস ইনচার্জ, ${settings.className}`,
+                `প্রিয় অভিভাবক,\n${s.name}-এর তথ্য (বেতন, হাজিরা, রশিদ) অনলাইনে দেখতে:\n${window.location.origin}\n\nক্লাস: ${settings.className}\nরোল: ${s.roll}\nপিন: ${s.pin}\n\nপিন গোপন রাখুন।\n${settings.inchargeName}\nক্লাস ইনচার্জ, ${settings.className}`,
               )}
             >
-              <WhatsAppIcon className="h-5 w-5" /> পোর্টালের আইডি ও পিন পাঠান
+              <WhatsAppIcon className="h-5 w-5" /> পোর্টালের রোল ও পিন পাঠান
             </Button>
           )}
           <Button variant="soft-danger" icon={Trash2} block className="mt-2.5" onClick={remove}>
@@ -314,6 +330,7 @@ const Empty = ({ text }) => <p className="py-3 text-[14px] text-slate-400">{text
 
 export function StudentFormSheet() {
   const { studentForm, closeStudentForm } = useUI();
+  const { settings } = useApp();
   const editing = studentForm?.student;
   return (
     <Sheet
@@ -321,7 +338,7 @@ export function StudentFormSheet() {
       onClose={closeStudentForm}
       full
       title={editing ? 'তথ্য সম্পাদনা' : 'নতুন শিক্ষার্থী'}
-      subtitle={editing ? `রোল ${editing.roll} · ${editing.name}` : 'একাদশ শ্রেণিতে ভর্তি করুন'}
+      subtitle={editing ? `রোল ${editing.roll} · ${editing.name}` : `${settings.className} · নতুন ভর্তি`}
     >
       {studentForm && <StudentForm editing={editing} />}
     </Sheet>
@@ -331,6 +348,8 @@ export function StudentFormSheet() {
 function StudentForm({ editing }) {
   const { students, settings, addStudent, updateStudent, classId } = useApp();
   const { closeStudentForm, toast, openStudent } = useUI();
+  const departments = settings.departments || [];
+  const sections = settings.sections || [];
 
   const [form, setForm] = useState(() => {
     if (editing) return { ...editing };
@@ -339,7 +358,8 @@ function StudentForm({ editing }) {
       name: '',
       nameEn: '',
       roll: nextRoll,
-      group: 'Science',
+      group: departments[0]?.id || '',
+      section: sections[0]?.id || '',
       gender: 'Male',
       fatherName: '',
       motherName: '',
@@ -349,30 +369,11 @@ function StudentForm({ editing }) {
       monthlyFee: settings.defaultMonthlyFee,
       pin: String(Math.floor(1000 + Math.random() * 9000)),
       status: 'active',
-      avatar: '',
+      absentFine: '',
     };
   });
   const [errors, setErrors] = useState({});
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }));
-
-  const onPhoto = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    // Downscale on-device so the photo stays small in storage
-    const img = new Image();
-    img.onload = () => {
-      const size = 240;
-      const c = document.createElement('canvas');
-      c.width = size;
-      c.height = size;
-      const ctx = c.getContext('2d');
-      const min = Math.min(img.width, img.height);
-      ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, size, size);
-      setForm((f) => ({ ...f, avatar: c.toDataURL('image/jpeg', 0.82) }));
-      URL.revokeObjectURL(img.src);
-    };
-    img.src = URL.createObjectURL(file);
-  };
 
   const save = async () => {
     const err = {};
@@ -382,10 +383,14 @@ function StudentForm({ editing }) {
     if (form.guardianPhone && !/^01\d{9}$/.test(String(form.guardianPhone).replace(/[^0-9]/g, '').replace(/^88/, '')))
       err.guardianPhone = '১১ সংখ্যার মোবাইল নম্বর দিন (01XXXXXXXXX)';
     if (!/^\d{4,6}$/.test(String(form.pin))) err.pin = '৪–৬ সংখ্যার পিন দিন';
+    if (form.absentFine !== '' && form.absentFine != null && !(Number(form.absentFine) >= 0)) err.absentFine = 'সঠিক পরিমাণ দিন';
     setErrors(err);
     if (Object.keys(err).length) return;
 
-    const data = { ...form, roll: Number(form.roll), monthlyFee: Number(form.monthlyFee) };
+    const { avatar: _photo, ...rest } = form;
+    const absentFine = rest.absentFine === '' || rest.absentFine == null ? '' : Number(rest.absentFine);
+    const data = { ...rest, roll: Number(form.roll), monthlyFee: Number(form.monthlyFee), absentFine };
+    if (editing?.avatar) data.avatar = '';
     if (editing) {
       await updateStudent(editing.id, data);
       toast('তথ্য আপডেট হয়েছে');
@@ -401,17 +406,11 @@ function StudentForm({ editing }) {
   return (
     <div className="space-y-6 pt-1">
       <div className="flex items-center gap-4">
-        <label className="press relative cursor-pointer">
-          <Avatar src={form.avatar} name={form.nameEn || form.name || '?'} seed={form.roll} size={76} rounded="rounded-[24px]" />
-          <span className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center rounded-full bg-ink text-white ring-4 ring-white">
-            <Camera className="h-4 w-4" />
-          </span>
-          <input type="file" accept="image/*" className="hidden" onChange={onPhoto} />
-        </label>
+        <RollBadge roll={form.roll || '?'} seed={editing?.id || form.roll} size={76} rounded="rounded-[24px]" />
         <div className="text-[13.5px] text-slate-500">
-          ছবি যোগ করতে ট্যাপ করুন
+          ছবির বদলে রোল নম্বর দেখানো হবে
           <br />
-          <span className="text-[12.5px]">ক্যামেরা বা গ্যালারি থেকে</span>
+          <span className="text-[12.5px]">রোল বদলালে এখানেও বদলাবে</span>
         </div>
       </div>
 
@@ -430,19 +429,21 @@ function StudentForm({ editing }) {
             <Input value={form.roll ? studentIdFor(classId, form.roll) : ''} readOnly tabIndex={-1} className="tabular bg-slate-100 text-slate-600" />
           </Field>
         </div>
-        <Field label="বিভাগ">
-          <Chips value={form.group} onChange={set('group')} options={GROUPS.map((g) => ({ value: g.id, label: g.bn }))} bleed={false} />
-        </Field>
-        <Field label="লিঙ্গ">
-          <Segmented
-            value={form.gender}
-            onChange={set('gender')}
-            options={[
-              { value: 'Male', label: 'ছাত্র' },
-              { value: 'Female', label: 'ছাত্রী' },
-            ]}
-          />
-        </Field>
+        {departments.length > 0 && (
+          <Field label="বিভাগ">
+            <Pills value={form.group} onChange={set('group')} options={departments} />
+          </Field>
+        )}
+        {sections.length > 0 && (
+          <Field label="শাখা">
+            <Pills value={form.section} onChange={set('section')} options={sections} />
+          </Field>
+        )}
+        {settings.useGender !== false && (
+          <Field label="ছাত্র / ছাত্রী">
+            <Segmented value={form.gender} onChange={set('gender')} options={GENDERS.map((g) => ({ value: g.id, label: g.bn }))} />
+          </Field>
+        )}
       </FormSection>
 
       <FormSection title="অভিভাবক">
@@ -469,6 +470,13 @@ function StudentForm({ editing }) {
             <Input inputMode="numeric" maxLength={6} value={form.pin} onChange={set('pin')} className="tracking-[0.3em]" />
           </Field>
         </div>
+        <Field
+          label="অনুপস্থিতির জরিমানা (৳/দিন)"
+          error={errors.absentFine}
+          hint={`খালি রাখলে ক্লাসের নিয়ম (৳${settings.absentFine}) · 0 দিলে এই শিক্ষার্থীর জরিমানা হবে না`}
+        >
+          <Input type="number" inputMode="numeric" min={0} value={form.absentFine ?? ''} onChange={set('absentFine')} placeholder={String(settings.absentFine)} />
+        </Field>
         <Field label="ভর্তির তারিখ">
           <Input type="date" value={form.admissionDate || ''} onChange={set('admissionDate')} />
         </Field>
@@ -492,6 +500,22 @@ function StudentForm({ editing }) {
     </div>
   );
 }
+
+// Wrapping pills (not a scrolling chip row) so every department / section is visible at once
+const Pills = ({ value, onChange, options }) => (
+  <div className="flex flex-wrap gap-2">
+    {options.map((o) => (
+      <button
+        key={o.id}
+        type="button"
+        onClick={() => onChange(o.id)}
+        className={cx('press h-10 rounded-xl px-4 text-[14.5px] font-semibold', value === o.id ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}
+      >
+        {o.bn}
+      </button>
+    ))}
+  </div>
+);
 
 const FormSection = ({ title, children }) => (
   <section>

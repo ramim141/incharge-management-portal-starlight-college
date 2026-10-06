@@ -3,7 +3,7 @@ import { Printer, Check, GraduationCap } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, Button } from './ui';
-import { taka, fmtDate, fmtTime, groupBn, waLink, methodBn } from '../lib/format';
+import { taka, fmtDate, fmtTime, studentTags, waLink, methodBn } from '../lib/format';
 
 const WhatsAppIcon = (props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -77,7 +77,7 @@ export function ReceiptSheet() {
                 <Meta label="রশিদ নং" value={p.receiptNo} mono />
                 <Meta label="তারিখ" value={`${fmtDate(p.paymentDate)} · ${fmtTime(p.paymentDate)}`} right />
                 <Meta label="শিক্ষার্থী" value={p.studentName} />
-                <Meta label="রোল · বিভাগ" value={`${p.roll}${student ? ` · ${groupBn(student.group)}` : ''}`} right />
+                <Meta label="রোল · বিভাগ" value={`${p.roll}${student && studentTags(student) ? ` · ${studentTags(student)}` : ''}`} right />
                 <Meta label="মাধ্যম" value={`${methodBn(p.method)}${p.trxId ? ` · ${p.trxId}` : ''}`} />
                 <Meta label="আইডি" value={student?.studentId || '—'} right mono />
               </div>

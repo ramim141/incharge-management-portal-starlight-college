@@ -1,10 +1,9 @@
-import { buildDemoDocs } from './demoSeed';
 import { newId } from '../lib/hash';
 
 // Same interface as the Firebase backend, stored in this browser's localStorage.
-// Used for the demo until Firebase is connected; everything stays on one device.
-const DB_KEY = 'xi_demo_db_v2';
-const SESSION_KEY = 'xi_demo_session';
+// Test-only (VITE_LOCAL_TEST_DB=true): starts empty and never leaves this device.
+const DB_KEY = 'xi_local_test_db';
+const SESSION_KEY = 'xi_local_test_session';
 
 const authError = (code) => Object.assign(new Error(code), { code });
 
@@ -19,11 +18,9 @@ export function createLocalBackend() {
       const raw = localStorage.getItem(DB_KEY);
       if (raw) return JSON.parse(raw);
     } catch {
-      /* fall through to seed */
+      /* fall through to an empty database */
     }
-    const seeded = buildDemoDocs();
-    persist(seeded);
-    return seeded;
+    return { docs: {}, accounts: {} };
   }
 
   function persist(s = state) {
@@ -111,7 +108,7 @@ export function createLocalBackend() {
       notifyAuth();
     },
     async resetPassword() {
-      throw authError('auth/demo-mode');
+      throw authError('auth/local-mode');
     },
     async createAccount(email, password, { secondary = false } = {}) {
       const key = String(email).trim().toLowerCase();
@@ -126,7 +123,26 @@ export function createLocalBackend() {
       }
       return uid;
     },
-    /** Demo only: the principal can set a teacher's password directly. */
+    /** Local test only: the principal sets a teacher's password directly (no email). */
+    async changePassword(current, next) {
+      const u = currentUser();
+      const acc = u && state.accounts[u.email];
+      if (!acc || acc.password !== current) throw authError('auth/invalid-credential');
+      acc.password = next;
+      persist();
+    },
+    /** No email in local test mode: the change applies at once, as if the link was clicked */
+    async requestEmailChange(current, newEmail) {
+      const u = currentUser();
+      const acc = u && state.accounts[u.email];
+      if (!acc || acc.password !== current) throw authError('auth/invalid-credential');
+      const key = String(newEmail).trim().toLowerCase();
+      if (state.accounts[key]) throw authError('auth/email-already-in-use');
+      delete state.accounts[u.email];
+      state.accounts[key] = acc;
+      persist();
+      notifyAuth();
+    },
     async setPassword(email, password) {
       const key = String(email).trim().toLowerCase();
       if (!state.accounts[key]) throw authError('auth/user-not-found');
@@ -148,13 +164,6 @@ export function createLocalBackend() {
       });
       persist();
       emit();
-    },
-
-    async resetDemo() {
-      localStorage.removeItem(DB_KEY);
-      state = load();
-      emit();
-      notifyAuth();
     },
   };
 }

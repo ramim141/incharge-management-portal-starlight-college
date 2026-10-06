@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ChevronLeft } from 'lucide-react';
+import { X, Search, ChevronLeft, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useBackHandler } from '../lib/backstack';
 
 export const cx = (...c) => c.filter(Boolean).join(' ');
@@ -100,6 +100,27 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
       className={cx('shrink-0 grid place-items-center bg-gradient-to-br text-white font-bold', bg, rounded, className)}
     >
       {initials}
+    </div>
+  );
+}
+
+/** Students are shown by their roll number instead of a photo */
+export function RollBadge({ roll, seed, size = 44, className, rounded = 'rounded-2xl', label }) {
+  const text = String(roll ?? '?');
+  const key = String(seed ?? text);
+  const bg = AVATAR_BG[[...key].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
+  const showLabel = label ?? size >= 60;
+  const scale = text.length <= 2 ? 0.42 : text.length === 3 ? 0.36 : text.length === 4 ? 0.29 : 0.24;
+  return (
+    <div
+      style={{ width: size, height: size }}
+      className={cx('tabular shrink-0 flex flex-col items-center justify-center bg-gradient-to-br text-white leading-none', bg, rounded, className)}
+      aria-label={`রোল ${text}`}
+    >
+      {showLabel && <span style={{ fontSize: Math.max(10, Math.round(size * 0.15)) }} className="mb-0.5 font-semibold text-white/75">রোল</span>}
+      <span style={{ fontSize: Math.round(size * scale) }} className="font-extrabold tracking-tight">
+        {text}
+      </span>
     </div>
   );
 }
@@ -269,6 +290,109 @@ export function Chips({ options, value, onChange, className, bleed = true }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * One small button instead of rows of filter chips. `groups` = [{ key, label, options: [{ value, label, count }] }],
+ * `value` = { [key]: selected }, `defaults` = the "no filter" value of each group.
+ */
+export function FilterButton({ groups, value, defaults, onChange, className, compact }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const shown = groups.filter((g) => g.options.length > 1);
+  const active = shown.filter((g) => value[g.key] !== defaults[g.key]).length;
+  if (!shown.length) return null;
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="ফিল্টার"
+        onClick={() => {
+          setDraft(value);
+          setOpen(true);
+        }}
+        className={cx(
+          'press relative grid shrink-0 place-items-center shadow-card ring-1 ring-inset',
+          compact ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-2xl',
+          active ? 'bg-ink text-white ring-ink' : 'bg-white text-slate-600 ring-slate-200/80',
+          className,
+        )}
+      >
+        <SlidersHorizontal className="h-5 w-5" />
+        {active > 0 && (
+          <span className="tabular absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white ring-2 ring-canvas">
+            {active}
+          </span>
+        )}
+      </button>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="ফিল্টার"
+        footer={
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="secondary" onClick={() => setDraft(defaults)}>
+              রিসেট
+            </Button>
+            <Button
+              onClick={() => {
+                onChange(draft);
+                setOpen(false);
+              }}
+            >
+              দেখুন
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-5 pt-1">
+          {shown.map((g) => (
+            <div key={g.key}>
+              <p className="mb-2 text-[13px] font-bold text-slate-500">{g.label}</p>
+              <div className="flex flex-wrap gap-2">
+                {g.options.map((o) => {
+                  const on = draft[g.key] === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setDraft((d) => ({ ...d, [g.key]: o.value }))}
+                      className={cx(
+                        'press inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[14px] font-semibold',
+                        on ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600',
+                      )}
+                    >
+                      {o.label}
+                      {o.count != null && <span className={cx('tabular text-[12px]', on ? 'text-white/70' : 'text-slate-400')}>{o.count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Sheet>
+    </>
+  );
+}
+
+/** Compact dropdown pill — for picking a month, report type, etc. without a row of chips */
+export function SelectPill({ value, onChange, options, className, label }) {
+  return (
+    <label className={cx('press relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white pl-4 pr-9 text-[14px] font-semibold text-ink shadow-card ring-1 ring-inset ring-slate-200/80', className)}>
+      {label && <span className="text-slate-500">{label}</span>}
+      <span className="truncate">{options.find((o) => o.value === value)?.label}</span>
+      <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" />
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" aria-label={label || 'বাছুন'}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+            {o.count != null ? ` (${o.count})` : ''}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

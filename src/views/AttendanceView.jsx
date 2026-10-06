@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Segmented, Chips, Card, Avatar, Badge, Button, Progress, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
-import { GROUPS, groupBn, ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn } from '../lib/format';
+import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
+import { studentTags, ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka } from '../lib/format';
+import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 const STATUS_STYLE = {
   Present: { row: '', pill: 'bg-emerald-500 text-white' },
@@ -12,21 +13,80 @@ const STATUS_STYLE = {
   Leave: { row: 'bg-sky-50/70', pill: 'bg-sky-500 text-white' },
 };
 
+const HELP_KEY = 'xi_att_help';
+
+function AttendanceHelp({ open, onClose, fine }) {
+  const [hide, setHide] = useState(false);
+  const close = () => {
+    if (hide) {
+      try {
+        localStorage.setItem(HELP_KEY, 'off');
+      } catch {
+        /* private mode — the popup simply shows again next time */
+      }
+    }
+    onClose();
+  };
+  return (
+    <Sheet open={open} onClose={close} title="হাজিরা নেওয়ার নিয়ম">
+      <div className="space-y-3 pt-1">
+        <div className="flex gap-3 rounded-2xl bg-brand-50/70 p-4 text-[14.5px] leading-relaxed text-brand-900">
+          <Hand className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-bold">বোতামের মানে</p>
+            <p>উ = উপস্থিত, অ = অনুপস্থিত, দে = দেরি, ছু = ছুটি</p>
+            <p className="text-[13.5px] text-brand-800/80">নামে ট্যাপ করলেও পরের অবস্থায় বদলায়</p>
+          </div>
+        </div>
+        {fine != null && (
+          <div className="flex gap-3 rounded-2xl bg-rose-50/80 p-4 text-[14.5px] leading-relaxed text-rose-900">
+            <Gavel className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <p className="font-bold">অনুপস্থিতির জরিমানা</p>
+              <p>
+                অনুপস্থিত দিয়ে সংরক্ষণ করলে আপনাআপনি জরিমানা হবে — সাধারণত {taka(fine)}/দিন, শিক্ষার্থীভেদে আলাদা হতে পারে।
+              </p>
+              <p className="text-[13.5px] text-rose-800/80">পরে "জরিমানা" পাতা থেকে বদলানো বা মওকুফ করা যাবে।</p>
+            </div>
+          </div>
+        )}
+        <button type="button" onClick={() => setHide((v) => !v)} className="flex items-center gap-2.5 py-1 text-[14px] font-medium text-slate-600">
+          <Checkbox checked={hide} className="h-5 w-5 rounded-md" />
+          আর দেখাবেন না
+        </button>
+        <Button size="lg" block onClick={close}>
+          বুঝেছি
+        </Button>
+      </div>
+    </Sheet>
+  );
+}
+
 export const AttendanceView = () => {
-  const { students, attendance, saveAttendanceRecord, getStudentAttendanceStats } = useApp();
+  const { students, attendance, saveAttendanceRecord, getStudentAttendanceStats, settings, absenceFineFor } = useApp();
   const { toast, openStudent, confirm } = useUI();
 
   const [tab, setTab] = useState('sheet');
   const [date, setDate] = useState(todayISO());
-  const [group, setGroup] = useState('All');
+  const FILTER_DEFAULTS = { group: 'All', section: 'All', gender: 'All' };
+  const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [records, setRecords] = useState(() => ({ ...(attendance[todayISO()] || {}) }));
   const [dirty, setDirty] = useState(false);
+  // How-to popup shown when the page opens, until the teacher ticks "আর দেখাবেন না"
+  const [help, setHelp] = useState(() => {
+    try {
+      return localStorage.getItem(HELP_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const hasAbsentFine = Number(settings.absentFine) > 0 || students.some((s) => Number(s.absentFine) > 0);
 
   const active = useMemo(
     () => students.filter((s) => s.status !== 'inactive').sort((a, b) => Number(a.roll) - Number(b.roll)),
     [students],
   );
-  const list = active.filter((s) => group === 'All' || s.group === group);
+  const list = active.filter((s) => matchStudentFilter(s, filters));
   const saved = !!attendance[date];
 
   const changeDate = async (next) => {
@@ -70,10 +130,11 @@ export const AttendanceView = () => {
     active.forEach((s) => {
       if (!final[s.id]) final[s.id] = 'Present';
     });
-    await saveAttendanceRecord(date, final);
+    const { added, removed } = await saveAttendanceRecord(date, final);
     setRecords(final);
     setDirty(false);
-    toast(`${fmtDate(date, { year: false })} এর হাজিরা সংরক্ষিত হয়েছে`);
+    const extra = [added && `${added} জনের অনুপস্থিতি জরিমানা যোগ হয়েছে`, removed && `${removed}টি জরিমানা বাদ গেছে`].filter(Boolean).join(' · ');
+    toast(`${fmtDate(date, { year: false })} এর হাজিরা সংরক্ষিত${extra ? ` — ${extra}` : ''}`);
   };
 
   const counts = { Present: 0, Absent: 0, Late: 0, Leave: 0 };
@@ -85,7 +146,8 @@ export const AttendanceView = () => {
 
   return (
     <div>
-      <PageHeader title="হাজিরা" subtitle="দৈনিক হাজিরা খাতা">
+      <AttendanceHelp open={help} onClose={() => setHelp(false)} fine={hasAbsentFine ? settings.absentFine : null} />
+      <PageHeader title="হাজিরা" subtitle="দৈনিক হাজিরা খাতা" actions={<IconButton icon={Info} label="নিয়ম দেখুন" onClick={() => setHelp(true)} />}>
         <Segmented
           value={tab}
           onChange={setTab}
@@ -137,25 +199,16 @@ export const AttendanceView = () => {
             ))}
           </div>
 
-          <Chips
-            className="mt-3"
-            value={group}
-            onChange={setGroup}
-            options={[{ value: 'All', label: `সব (${active.length})` }, ...GROUPS.map((g) => ({ value: g.id, label: g.bn }))]}
-          />
 
-          <div className="mt-3 flex items-center gap-2 rounded-2xl bg-brand-50/70 px-3.5 py-2.5 text-[13px] text-brand-800">
-            <Hand className="h-4 w-4 shrink-0" />
-            <span className="flex-1">উ = উপস্থিত, অ = অনুপস্থিত, দে = দেরি, ছু = ছুটি · নামে ট্যাপ করলেও বদলায়</span>
-          </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex items-center gap-2">
             <Button variant="soft-success" size="sm" icon={CheckCheck} className="flex-1" onClick={() => markAll('Present')}>
               সবাই উপস্থিত
             </Button>
             <Button variant="soft-danger" size="sm" className="flex-1" onClick={() => markAll('Absent')}>
               সবাই অনুপস্থিত
             </Button>
+            <FilterButton compact value={filters} defaults={FILTER_DEFAULTS} onChange={setFilters} groups={studentFilterGroups(settings, active)} />
           </div>
 
           <Card className="mt-3 divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
@@ -167,7 +220,8 @@ export const AttendanceView = () => {
                     <span className="min-w-0 flex-1">
                       <span className={cx('block truncate text-[15px] font-semibold', st === 'Absent' ? 'text-rose-700' : 'text-ink')}>{s.name}</span>
                       <span className="tabular block truncate text-[12.5px] text-slate-500">
-                        রোল {s.roll} · {groupBn(s.group)}
+                        রোল {s.roll}{studentTags(s) ? ` · ${studentTags(s)}` : ''}
+                        {st === 'Absent' && absenceFineFor(s) > 0 && <span className="font-semibold text-rose-600"> · জরিমানা {taka(absenceFineFor(s))}</span>}
                       </span>
                     </span>
                   </button>
@@ -235,11 +289,11 @@ function Summary({ students, getStats, onOpen }) {
           return (
             <button key={s.id} type="button" onClick={() => onOpen(s)} className="w-full px-4 py-3.5 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r">
               <div className="flex items-center gap-3">
-                <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={40} />
+                <RollBadge roll={s.roll} seed={s.id} size={40} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-semibold text-ink">{s.name}</p>
                   <p className="tabular text-[12.5px] text-slate-500">
-                    রোল {s.roll} · উ {st.present} · অ {st.absent} · মোট {st.totalClasses}
+                    উ {st.present} · অ {st.absent} · মোট {st.totalClasses}
                   </p>
                 </div>
                 <Badge tone={tone}>{Math.round(st.percentage)}%</Badge>

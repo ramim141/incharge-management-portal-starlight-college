@@ -1,19 +1,19 @@
 import React, { useRef, useState } from 'react';
 import {
-  School, Wallet, MessageSquareText, Database, HardDriveDownload, ChevronDown, RotateCcw, Download, Upload, Save,
+  School, Wallet, MessageSquareText, Database, HardDriveDownload, ChevronDown, Download, Upload, Save, Layers, Plus, X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Card, Field, Input, Textarea, Button, Badge, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
+import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
 import { todayISO } from '../lib/format';
 
-const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'class_name'];
-const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'whatsappTemplate'];
+const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name'];
+const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
 const pick = (o) => Object.fromEntries(EDITABLE.map((k) => [k, o[k] ?? '']));
 
 export const SettingsView = () => {
   const {
-    settings, setSettings, isDemo, isPrincipal, resetToDefaultMockData, importBackup, classId,
+    settings, setSettings, isLocal, isPrincipal, importBackup, classId,
     students, fees, examFees, fines, payments, attendance, calculateStudentTotalDue,
   } = useApp();
   const { toast, confirm } = useUI();
@@ -25,7 +25,8 @@ export const SettingsView = () => {
   const set = (k, num) => (e) => setForm((f) => ({ ...f, [k]: num ? Number(e.target.value) : e.target.value }));
 
   const saveGeneral = async () => {
-    await setSettings(form);
+    const clean = (list) => list.map((i) => ({ ...i, bn: i.bn.trim() })).filter((i) => i.bn);
+    await setSettings({ ...form, departments: clean(form.departments), sections: clean(form.sections) });
     toast('সেটিংস সংরক্ষিত হয়েছে');
   };
 
@@ -42,6 +43,7 @@ export const SettingsView = () => {
       .replace(/\{total_due\}/g, calculateStudentTotalDue(s.id))
       .replace(/\{deadline\}/g, `${form.defaultFeeDeadlineDay} ${settings.currentMonth} ${settings.currentYear}`)
       .replace(/\{incharge_name\}/g, form.inchargeName)
+      .replace(/\{incharge_phone\}/g, form.inchargePhone)
       .replace(/\{class_name\}/g, settings.className)
       .replace(/\{roll\}/g, s.roll);
   })();
@@ -81,17 +83,6 @@ export const SettingsView = () => {
     } catch (err) {
       toast(`ইমপোর্ট ব্যর্থ: ${err.message}`, 'error');
     }
-  };
-
-  const reset = async () => {
-    const ok = await confirm({
-      title: 'ডেমো ডাটায় ফিরবেন?',
-      message: 'এই ফোনে করা সব পরিবর্তন মুছে যাবে। আগে ব্যাকআপ নিয়ে রাখুন।',
-      confirmText: 'রিসেট',
-      tone: 'danger',
-      icon: RotateCcw,
-    });
-    if (ok) resetToDefaultMockData();
   };
 
   return (
@@ -135,11 +126,64 @@ export const SettingsView = () => {
             <Field label="শেষ তারিখ (দিন)">
               <Input type="number" inputMode="numeric" min={1} max={28} value={form.defaultFeeDeadlineDay} onChange={set('defaultFeeDeadlineDay', true)} />
             </Field>
-            <Field label="বিলম্ব জরিমানা (৳)" className="col-span-2">
+            <Field label="বিলম্ব জরিমানা (৳)">
               <Input type="number" inputMode="numeric" value={form.fixedFineAfterDeadline} onChange={set('fixedFineAfterDeadline', true)} />
+            </Field>
+            <Field label="অনুপস্থিতি জরিমানা (৳/দিন)">
+              <Input type="number" inputMode="numeric" min={0} value={form.absentFine} onChange={set('absentFine', true)} />
             </Field>
           </div>
           <p className="text-[12.5px] text-slate-500">চলতি মাস তারিখ দেখে আপনাআপনি ঠিক হয়। নতুন মাসের বেতন "মাসিক বেতন" পাতা থেকে তৈরি করুন।</p>
+          <p className="text-[12.5px] text-slate-500">
+            হাজিরায় অনুপস্থিত দিলে প্রতিদিন এই জরিমানা হবে। কোনো শিক্ষার্থীর আলাদা হার দিতে তার তথ্য এডিট করুন; 0 দিলে অনুপস্থিতি জরিমানা বন্ধ থাকবে।
+          </p>
+        </Section>
+
+        <Section
+          id="groups"
+          open={open}
+          setOpen={setOpen}
+          icon={Layers}
+          color="bg-violet-50 text-violet-600"
+          title="বিভাগ ও শাখা"
+          hint={[
+            form.departments.length ? `${form.departments.length}টি বিভাগ` : 'বিভাগ নেই',
+            form.sections.length ? `${form.sections.length}টি শাখা` : null,
+            form.useGender !== false ? 'ছাত্র/ছাত্রী' : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        >
+          <p className="text-[12.5px] text-slate-500">আপনার ক্লাস যেভাবে ভাগ করা, সেভাবে সাজান। এগুলোই শিক্ষার্থীর ফর্ম আর ফিল্টারে দেখাবে। কিছু না লাগলে সব মুছে দিন।</p>
+          <ListEditor
+            title="বিভাগ (Department)"
+            items={form.departments}
+            onChange={(departments) => setForm((f) => ({ ...f, departments }))}
+            usedBy={(id) => students.filter((s) => s.group === id).length}
+            placeholder="যেমন বিজ্ঞান"
+            presets={[['বিজ্ঞান', 'ব্যবসায় শিক্ষা', 'মানবিক']]}
+          />
+          <ListEditor
+            title="শাখা (Section)"
+            items={form.sections}
+            onChange={(sections) => setForm((f) => ({ ...f, sections }))}
+            usedBy={(id) => students.filter((s) => s.section === id).length}
+            placeholder="যেমন ক শাখা"
+            presets={[
+              ['ছাত্র শাখা', 'ছাত্রী শাখা'],
+              ['ক শাখা', 'খ শাখা', 'গ শাখা'],
+            ]}
+          />
+          <Field label="ছাত্র / ছাত্রী আলাদা করে দেখাবেন?">
+            <Segmented
+              value={form.useGender === false ? 'off' : 'on'}
+              onChange={(v) => setForm((f) => ({ ...f, useGender: v === 'on' }))}
+              options={[
+                { value: 'on', label: 'হ্যাঁ' },
+                { value: 'off', label: 'না' },
+              ]}
+            />
+          </Field>
         </Section>
 
         <Section id="wa" open={open} setOpen={setOpen} icon={MessageSquareText} color="bg-emerald-50 text-emerald-600" title="WhatsApp মেসেজ টেমপ্লেট" hint="রিমাইন্ডারের লেখা">
@@ -167,13 +211,13 @@ export const SettingsView = () => {
           icon={HardDriveDownload}
           color="bg-amber-50 text-amber-600"
           title="ব্যাকআপ ও ডাটা"
-          hint={isDemo ? 'ডেমো মোড — তথ্য শুধু এই ফোনে' : 'Cloud-এ সংরক্ষিত, সব ডিভাইসে সিঙ্ক'}
-          badge={<Badge tone={isDemo ? 'amber' : 'green'} dot>{isDemo ? 'ডেমো' : 'Cloud'}</Badge>}
+          hint={isLocal ? 'পরীক্ষামূলক — তথ্য শুধু এই ব্রাউজারে' : 'Cloud-এ সংরক্ষিত, সব ডিভাইসে সিঙ্ক'}
+          badge={<Badge tone={isLocal ? 'amber' : 'green'} dot>{isLocal ? 'টেস্ট' : 'Cloud'}</Badge>}
         >
           <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3.5 text-[13.5px] text-slate-600">
             <Database className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-            {isDemo
-              ? 'এখন ডেমো মোড চলছে। অধ্যক্ষ Firebase যুক্ত করলে সব শিক্ষকের ফোনে একই তথ্য থাকবে।'
+            {isLocal
+              ? 'এটি পরীক্ষামূলক ডাটাবেজ — তথ্য শুধু এই ব্রাউজারে থাকে।'
               : 'সব তথ্য Firebase Cloud-এ থাকে। ইন্টারনেট না থাকলেও কাজ করা যায় — সংযোগ এলে আপনাআপনি সিঙ্ক হয়।'}
           </div>
           <Button variant="secondary" icon={Download} block onClick={backup}>
@@ -183,11 +227,6 @@ export const SettingsView = () => {
             ব্যাকআপ থেকে ইমপোর্ট
           </Button>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImport} />
-          {isDemo && (
-            <Button variant="soft-danger" icon={RotateCcw} block onClick={reset}>
-              ডেমো ডাটায় রিসেট করুন
-            </Button>
-          )}
         </Section>
       </div>
 
@@ -210,6 +249,68 @@ export const SettingsView = () => {
     </div>
   );
 };
+
+/** Add / rename / remove the in-charge's own departments or sections */
+function ListEditor({ title, items, onChange, usedBy, placeholder, presets = [] }) {
+  const { confirm } = useUI();
+  const [draft, setDraft] = useState('');
+  const has = (bn) => items.some((i) => i.bn.trim() === bn.trim());
+
+  const add = (labels) => {
+    const fresh = labels.map((l) => l.trim()).filter((l) => l && !has(l));
+    if (!fresh.length) return;
+    const stamp = Date.now().toString(36);
+    onChange([...items, ...fresh.map((bn, i) => ({ id: `g-${stamp}${i}`, bn }))]);
+    setDraft('');
+  };
+
+  const remove = async (item) => {
+    const n = usedBy(item.id);
+    if (n > 0) {
+      const ok = await confirm({
+        title: `"${item.bn}" মুছবেন?`,
+        message: `${n} জন শিক্ষার্থী এতে আছে। তাদের তথ্য থাকবে, কিন্তু তালিকা ও ফিল্টারে এটি আর দেখাবে না।`,
+        confirmText: 'মুছুন',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
+    onChange(items.filter((i) => i.id !== item.id));
+  };
+
+  return (
+    <div>
+      <p className="mb-2 text-[13.5px] font-semibold text-slate-700">{title}</p>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.id} className="flex items-center gap-2">
+            <Input
+              value={item.bn}
+              onChange={(e) => onChange(items.map((i) => (i.id === item.id ? { ...i, bn: e.target.value } : i)))}
+              aria-label="নাম"
+            />
+            <span className="tabular w-8 shrink-0 text-center text-[12.5px] text-slate-400">{usedBy(item.id)}</span>
+            <button type="button" onClick={() => remove(item)} aria-label="মুছুন" className="press grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-600">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={placeholder} onKeyDown={(e) => e.key === 'Enter' && add([draft])} />
+          <button type="button" onClick={() => add([draft])} disabled={!draft.trim()} aria-label="যোগ করুন" className="press grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-ink text-white disabled:bg-slate-200 disabled:text-slate-400">
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
+        {items.length === 0 &&
+          presets.map((p) => (
+            <button key={p.join()} type="button" onClick={() => add(p)} className="press mr-2 rounded-full bg-slate-100 px-3 py-1.5 text-[13px] font-semibold text-slate-600">
+              + {p.join(' / ')}
+            </button>
+          ))}
+      </div>
+    </div>
+  );
+}
 
 function Section({ id, open, setOpen, icon: Icon, color, title, hint, badge, children }) {
   const expanded = open === id;

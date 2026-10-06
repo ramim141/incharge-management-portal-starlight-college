@@ -1,16 +1,16 @@
-# React + Vite
+# Class Portal — ক্লাস ইনচার্জ ও শিক্ষার্থী পোর্টাল
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+একটি প্রতিষ্ঠানের সব ক্লাসের জন্য মোবাইল-প্রথম অ্যাপ: অধ্যক্ষ ক্লাস ও শিক্ষক তৈরি করেন, প্রত্যেক ক্লাস ইনচার্জ নিজের ক্লাসের
+শিক্ষার্থী, মাসিক বেতন, হাজিরা, জরিমানা (অনুপস্থিতি জরিমানাসহ), পরীক্ষার ফি, রশিদ, রিপোর্ট ও WhatsApp রিমাইন্ডার সামলান।
+শিক্ষার্থীরা রোল + পিন দিয়ে নিজের বেতন, হাজিরার ক্যালেন্ডার, জরিমানা ও রশিদ দেখে।
 
-Currently, two official plugins are available:
+React + Vite + Tailwind (CDN) + Firebase (Auth + Firestore)।
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## চালু করা
 
-## React Compiler
+1. Firebase প্রজেক্ট তৈরি ও কী বসানো — **[FIREBASE_SETUP.md](FIREBASE_SETUP.md)** দেখুন
+2. `npm install`
+3. `npm run dev` — লোকাল চালানো
+4. `npm run build` → `firebase deploy` — অনলাইনে দেওয়া
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Firebase কী ছাড়া পরীক্ষা করতে: `npm run dev:local-test` (খালি, শুধু ওই ব্রাউজারের ডাটাবেজ)।

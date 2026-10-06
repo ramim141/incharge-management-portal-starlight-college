@@ -2,16 +2,19 @@ import React, { useMemo, useState } from 'react';
 import { Phone, Wallet, PartyPopper, MessageSquareText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Chips, SearchBar, Card, Avatar, Badge, Button, Checkbox, EmptyState, cx, DOCK, DOCK_BOTTOM, CARD_GRID } from '../components/ui';
+import { PageHeader, FilterButton, SearchBar, Card, RollBadge, Badge, Button, Checkbox, EmptyState, cx, DOCK, DOCK_BOTTOM, CARD_GRID } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { ReasonSheet } from './FeesView';
 import { taka, monthBn, feeStatus, daysLate } from '../lib/format';
+import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 export const DueStudentsView = () => {
   const { students, fees, settings, calculateStudentTotalDue } = useApp();
   const { openWhatsApp, openPayment, openStudent } = useUI();
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('all');
+  const DEFAULTS = { due: 'all', group: 'All', section: 'All', gender: 'All' };
+  const [filters, setFilters] = useState(DEFAULTS);
+  const filter = filters.due;
   const [selected, setSelected] = useState(() => new Set());
   const [reasonFee, setReasonFee] = useState(null);
 
@@ -39,6 +42,7 @@ export const DueStudentsView = () => {
   const list = dueList.filter(
     (s) =>
       (filter === 'all' || s.overdue) &&
+      matchStudentFilter(s, filters) &&
       (!t || String(s.roll).includes(t) || s.name.toLowerCase().includes(t) || (s.nameEn || '').toLowerCase().includes(t) || (s.guardianPhone || '').includes(t)),
   );
 
@@ -75,24 +79,31 @@ export const DueStudentsView = () => {
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <Chips
-          className="flex-1"
-          value={filter}
-          onChange={setFilter}
-          options={[
-            { value: 'all', label: 'সবাই', count: dueList.length },
-            { value: 'overdue', label: 'মেয়াদোত্তীর্ণ', count: overdueN },
+      <div className="mt-4 flex gap-2">
+        <SearchBar className="flex-1" value={q} onChange={setQ} placeholder="রোল, নাম বা ফোন" />
+        <FilterButton
+          value={filters}
+          defaults={DEFAULTS}
+          onChange={setFilters}
+          groups={[
+            {
+              key: 'due',
+              label: 'বকেয়া',
+              options: [
+                { value: 'all', label: 'সবাই', count: dueList.length },
+                { value: 'overdue', label: 'মেয়াদোত্তীর্ণ', count: overdueN },
+              ],
+            },
+            ...studentFilterGroups(settings, dueList),
           ]}
         />
-        {list.length > 0 && (
-          <button type="button" onClick={toggleAll} className="press flex h-9 shrink-0 items-center gap-2 rounded-full bg-white px-3 text-[13.5px] font-semibold text-slate-700 ring-1 ring-slate-200">
-            <Checkbox checked={allSelected} className="h-5 w-5 rounded-md" />
-            সব
-          </button>
-        )}
       </div>
-      <SearchBar className="mt-3" value={q} onChange={setQ} placeholder="রোল, নাম বা ফোন" />
+      {list.length > 0 && (
+        <button type="button" onClick={toggleAll} className="press mt-3 flex items-center gap-2 text-[13.5px] font-semibold text-slate-600">
+          <Checkbox checked={allSelected} className="h-5 w-5 rounded-md" />
+          সবাইকে বাছুন ({list.length})
+        </button>
+      )}
 
       {list.length === 0 ? (
         <EmptyState icon={PartyPopper} title="কোনো বকেয়া নেই!" text="এই তালিকায় কেউ নেই — দারুণ কাজ।" />
@@ -107,11 +118,11 @@ export const DueStudentsView = () => {
                     <Checkbox checked={on} />
                   </button>
                   <button type="button" onClick={() => openStudent(s)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={42} />
+                    <RollBadge roll={s.roll} seed={s.id} size={42} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15.5px] font-semibold text-ink">{s.name}</span>
                       <span className="tabular block text-[12.5px] text-slate-500">
-                        রোল {s.roll} · {s.guardianPhone}
+                        {s.guardianPhone}
                       </span>
                     </span>
                   </button>

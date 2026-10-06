@@ -2,15 +2,17 @@ import React, { useMemo, useState } from 'react';
 import { Download, UserPlus, Users, ChevronRight } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, SearchBar, Chips, Card, Avatar, Badge, IconButton, EmptyState, Button, cx, CONTAINER, GUTTER } from '../components/ui';
-import { taka, GROUPS, groupBn, downloadCSV, todayISO } from '../lib/format';
+import { PageHeader, SearchBar, FilterButton, Card, RollBadge, Badge, IconButton, EmptyState, Button, cx, CONTAINER, GUTTER } from '../components/ui';
+import { taka, studentTags, downloadCSV, todayISO } from '../lib/format';
+import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 export const StudentsView = () => {
-  const { students, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
+  const { students, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
   const { openStudent, openStudentForm, toast } = useUI();
   const [q, setQ] = useState('');
-  const [group, setGroup] = useState('All');
-  const [status, setStatus] = useState('active');
+  const DEFAULTS = { status: 'active', group: 'All', section: 'All', gender: 'All' };
+  const [filters, setFilters] = useState(DEFAULTS);
+  const { status } = filters;
 
   const rows = useMemo(
     () =>
@@ -29,7 +31,7 @@ export const StudentsView = () => {
       (s.nameEn || '').toLowerCase().includes(t) ||
       (s.guardianPhone || '').includes(t) ||
       (s.studentId || '').toLowerCase().includes(t);
-    const matchG = group === 'All' || s.group === group;
+    const matchG = matchStudentFilter(s, filters);
     const matchS =
       status === 'all' || (status === 'due' ? due > 0 && s.status !== 'inactive' : (s.status || 'active') === status);
     return matchQ && matchG && matchS;
@@ -37,7 +39,7 @@ export const StudentsView = () => {
 
   const exportCSV = () => {
     downloadCSV(
-      `XI_Students_${todayISO()}.csv`,
+      `${settings.classCode}_Students_${todayISO()}.csv`,
       ['Roll', 'Student ID', 'Name', 'Name (EN)', 'Group', 'Father', 'Mother', 'Guardian Phone', 'Address', 'Monthly Fee', 'Total Due', 'Attendance %', 'Status'],
       filtered.map(({ s, due, att }) => [
         s.roll, s.studentId, s.name, s.nameEn || '', s.group, s.fatherName, s.motherName, s.guardianPhone, s.address, s.monthlyFee, due, att.percentage, s.status,
@@ -52,28 +54,31 @@ export const StudentsView = () => {
     <div>
       <PageHeader
         title="শিক্ষার্থী"
-        subtitle={`মোট ${students.length} জন · একাদশ শ্রেণি`}
+        subtitle={`মোট ${students.length} জন · ${settings.className}`}
         actions={<IconButton icon={Download} label="CSV ডাউনলোড" onClick={exportCSV} />}
       >
-        <SearchBar value={q} onChange={setQ} placeholder="রোল, নাম, ফোন বা আইডি" />
-        <Chips
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: 'active', label: 'সক্রিয়', count: count(({ s }) => (s.status || 'active') === 'active') },
-            { value: 'due', label: 'বকেয়া আছে', count: count(({ s, due }) => due > 0 && s.status !== 'inactive') },
-            { value: 'inactive', label: 'নিষ্ক্রিয়', count: count(({ s }) => s.status === 'inactive') },
-            { value: 'all', label: 'সবাই', count: rows.length },
-          ]}
-        />
+        <div className="flex gap-2">
+          <SearchBar className="flex-1" value={q} onChange={setQ} placeholder="রোল, নাম, ফোন বা আইডি" />
+          <FilterButton
+            value={filters}
+            defaults={DEFAULTS}
+            onChange={setFilters}
+            groups={[
+              {
+                key: 'status',
+                label: 'অবস্থা',
+                options: [
+                  { value: 'active', label: 'সক্রিয়', count: count(({ s }) => (s.status || 'active') === 'active') },
+                  { value: 'due', label: 'বকেয়া আছে', count: count(({ s, due }) => due > 0 && s.status !== 'inactive') },
+                  { value: 'inactive', label: 'নিষ্ক্রিয়', count: count(({ s }) => s.status === 'inactive') },
+                  { value: 'all', label: 'সবাই', count: rows.length },
+                ],
+              },
+              ...studentFilterGroups(settings, students),
+            ]}
+          />
+        </div>
       </PageHeader>
-
-      <Chips
-        className="mb-3"
-        value={group}
-        onChange={setGroup}
-        options={[{ value: 'All', label: 'সব বিভাগ' }, ...GROUPS.map((g) => ({ value: g.id, label: g.bn }))]}
-      />
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -90,17 +95,16 @@ export const StudentsView = () => {
         <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
           {filtered.map(({ s, due, att }) => (
             <button key={s.id} type="button" onClick={() => openStudent(s)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r">
-              <div className="relative">
-                <Avatar src={s.avatar} name={s.nameEn || s.name} seed={s.id} size={48} />
-                <span className="tabular absolute -bottom-1 -left-1 rounded-md bg-ink px-1.5 text-[11px] font-bold leading-[18px] text-white ring-2 ring-white">
-                  {s.roll}
-                </span>
-              </div>
+              <RollBadge roll={s.roll} seed={s.id} size={48} />
               <div className="min-w-0 flex-1">
                 <p className={cx('truncate text-[15.5px] font-semibold', s.status === 'inactive' ? 'text-slate-400' : 'text-ink')}>{s.name}</p>
-                <p className="flex items-center gap-1.5 text-[12.5px] text-slate-500">
-                  {groupBn(s.group)}
-                  <span className="text-slate-300">•</span>
+                <p className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12.5px] text-slate-500">
+                  {studentTags(s) && (
+                    <>
+                      {studentTags(s)}
+                      <span className="text-slate-300">•</span>
+                    </>
+                  )}
                   <span className={cx('tabular font-semibold', att.totalClasses === 0 ? 'text-slate-400' : att.percentage >= 75 ? 'text-emerald-600' : 'text-rose-600')}>
                     হাজিরা {Math.round(att.percentage)}%
                   </span>

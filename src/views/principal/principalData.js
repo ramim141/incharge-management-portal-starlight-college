@@ -49,11 +49,4 @@ export async function deleteClassDeep({ classes, users, classCode }) {
   await backend.write(ops, { wait: true });
 }
 
-export const generatePassword = () => {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let p = '';
-  for (let i = 0; i < 8; i++) p += chars[Math.floor(Math.random() * chars.length)];
-  return p;
-};
-
 export const CLASS_PRESETS = ['ষষ্ঠ শ্রেণি', 'সপ্তম শ্রেণি', 'অষ্টম শ্রেণি', 'নবম শ্রেণি', 'দশম শ্রেণি', 'একাদশ শ্রেণি', 'দ্বাদশ শ্রেণি'];

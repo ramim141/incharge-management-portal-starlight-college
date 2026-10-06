@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Plus, ReceiptText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, SearchBar, Chips, Card, IconButton, EmptyState, Button, cx } from '../components/ui';
+import { PageHeader, SearchBar, FilterButton, Card, IconButton, EmptyState, Button, cx } from '../components/ui';
 import { taka, fmtDate, fmtTime, dayNameBn, toISODate, todayISO, METHODS } from '../lib/format';
 
 const METHOD_DOT = Object.fromEntries(METHODS.map((m) => [m.id, m.color]));
@@ -11,7 +11,8 @@ export const PaymentsView = () => {
   const { payments } = useApp();
   const { openPayment, openReceipt } = useUI();
   const [q, setQ] = useState('');
-  const [method, setMethod] = useState('All');
+  const [filters, setFilters] = useState({ method: 'All' });
+  const { method } = filters;
 
   const today = todayISO();
   const monthKey = today.slice(0, 7);
@@ -40,7 +41,21 @@ export const PaymentsView = () => {
         subtitle={`মোট ${payments.length}টি লেনদেন`}
         actions={<IconButton icon={Plus} label="নতুন পেমেন্ট" onClick={() => openPayment()} />}
       >
-        <SearchBar value={q} onChange={setQ} placeholder="রশিদ নং, নাম বা রোল" />
+        <div className="flex gap-2">
+          <SearchBar className="flex-1" value={q} onChange={setQ} placeholder="রশিদ নং, নাম বা রোল" />
+          <FilterButton
+            value={filters}
+            defaults={{ method: 'All' }}
+            onChange={setFilters}
+            groups={[
+              {
+                key: 'method',
+                label: 'পেমেন্ট মাধ্যম',
+                options: [{ value: 'All', label: 'সব' }, ...METHODS.map((m) => ({ value: m.id, label: m.id, count: payments.filter((p) => p.method === m.id).length }))],
+              },
+            ]}
+          />
+        </div>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3">
@@ -54,12 +69,7 @@ export const PaymentsView = () => {
         </Card>
       </div>
 
-      <Chips
-        className="mt-4"
-        value={method}
-        onChange={setMethod}
-        options={[{ value: 'All', label: 'সব মাধ্যম' }, ...METHODS.map((m) => ({ value: m.id, label: m.id }))]}
-      />
+      <div className="mt-4" />
 
       {groups.length === 0 ? (
         <EmptyState

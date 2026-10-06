@@ -1,7 +1,7 @@
 import { initializeApp, deleteApp } from 'firebase/app';
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
+  sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential, updatePassword, verifyBeforeUpdateEmail,
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, onSnapshot, getDoc as fbGetDoc,
@@ -14,6 +14,7 @@ export function createFirebaseBackend(config) {
   const auth = getAuth(app);
   // Offline-first: reads/writes work without network and sync when it returns
   const db = initializeFirestore(app, {
+    ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
 
@@ -41,6 +42,19 @@ export function createFirebaseBackend(config) {
     },
     signOut: () => fbSignOut(auth),
     resetPassword: (email) => sendPasswordResetEmail(auth, email.trim()),
+
+    /** Signed-in user changes their own password (re-checks the current one first) */
+    async changePassword(current, next) {
+      const u = auth.currentUser;
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, current));
+      await updatePassword(u, next);
+    },
+    /** Moves the login to a real email; takes effect once the user clicks the link sent there */
+    async requestEmailChange(current, newEmail) {
+      const u = auth.currentUser;
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, current));
+      await verifyBeforeUpdateEmail(u, newEmail.trim());
+    },
 
     /** Creates a login. With `secondary`, the current user stays signed in (used by the principal). */
     async createAccount(email, password, { secondary = false } = {}) {

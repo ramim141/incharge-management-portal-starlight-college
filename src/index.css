@@ -11,8 +11,8 @@ body {
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', 'Hind Siliguri', system-ui, sans-serif;
-  /* Bangla glyphs sit a little low in Hind Siliguri; a touch more line-height keeps them airy */
+  font-family: 'Plus Jakarta Sans', 'Noto Sans Bengali', system-ui, sans-serif;
+  /* Bangla conjuncts and vowel signs need a little extra line-height */
   line-height: 1.5;
 }
 
