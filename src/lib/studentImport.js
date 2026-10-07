@@ -124,7 +124,7 @@ export function planImport(rows, { classes, existing, defaultClass }) {
     if (!cls) return errors.push({ row: line, msg: 'কোন ক্লাস তা নেই — "ক্লাস" কলাম দিন বা উপরে ক্লাস বাছুন' });
 
     const roll = Number(toEnDigits(rec.roll));
-    if (!Number.isInteger(roll) || roll <= 0 || roll > 9999) return errors.push({ row: line, msg: `রোল "${rec.roll || ''}" সঠিক নয়` });
+    if (!Number.isInteger(roll) || roll <= 0 || roll > 999999) return errors.push({ row: line, msg: `রোল "${rec.roll || ''}" সঠিক নয়` });
     if (!rec.name) return errors.push({ row: line, msg: 'নাম নেই' });
 
     const dupKey = `${cls.id}|${roll}`;

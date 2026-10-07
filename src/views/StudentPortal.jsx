@@ -134,7 +134,7 @@ function LoginCard({ onSuccess }) {
     if (locked || busy || !classes) return;
     const codes = typedCode ? [String(cls).trim().toUpperCase()].filter(Boolean) : classes.map((c) => c.code);
     if (!codes.length && typedCode) return fail('ক্লাস কোড লেখো');
-    if (!/^\d{1,4}$/.test(roll)) return fail('রোল নম্বর লেখো');
+    if (!/^\d{1,6}$/.test(roll)) return fail('রোল নম্বর লেখো');
     if (!/^\d{4,6}$/.test(pin)) return fail('৪ সংখ্যার পিন দাও');
     setBusy(true);
     try {
@@ -191,7 +191,7 @@ function LoginCard({ onSuccess }) {
           <input
             value={roll}
             onChange={(e) => {
-              setRoll(e.target.value.replace(/\D/g, '').slice(0, 4));
+              setRoll(e.target.value.replace(/\D/g, '').slice(0, 6));
               setError('');
             }}
             inputMode="numeric"

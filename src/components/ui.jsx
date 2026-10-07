@@ -104,16 +104,18 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
   );
 }
 
-/** Students are shown by their roll number instead of a photo */
+/** Students are shown by their roll number instead of a photo. Rolls can be up to 6 digits: long
+ *  ones keep a readable size and the badge widens instead of the digits shrinking. */
 export function RollBadge({ roll, seed, size = 44, className, rounded = 'rounded-2xl', label }) {
   const text = String(roll ?? '?');
   const key = String(seed ?? text);
   const bg = AVATAR_BG[[...key].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_BG.length];
   const showLabel = label ?? size >= 60;
-  const scale = text.length <= 2 ? 0.42 : text.length === 3 ? 0.36 : text.length === 4 ? 0.29 : 0.24;
+  const scale = text.length <= 2 ? 0.42 : text.length === 3 ? 0.36 : 0.3;
+  const wide = text.length > 4;
   return (
     <div
-      style={{ width: size, height: size }}
+      style={{ width: wide ? 'auto' : size, minWidth: size, height: size, paddingInline: wide ? Math.round(size * 0.16) : undefined }}
       className={cx('tabular shrink-0 flex flex-col items-center justify-center bg-gradient-to-br text-white leading-none', bg, rounded, className)}
       aria-label={`রোল ${text}`}
     >

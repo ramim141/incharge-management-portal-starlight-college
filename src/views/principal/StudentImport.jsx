@@ -138,7 +138,7 @@ function ListImport({ classes, onDone }) {
             <div className="mt-2 max-h-40 overflow-y-auto rounded-xl bg-slate-50 px-3 py-1 text-[13px]">
               {g.students.slice(0, 50).map((st) => (
                 <p key={st.row} className="flex gap-2 py-1">
-                  <span className="tabular w-10 shrink-0 font-bold text-slate-500">{st.input.roll}</span>
+                  <span className="tabular min-w-[2.5rem] shrink-0 font-bold text-slate-500">{st.input.roll}</span>
                   <span className="truncate text-ink">{st.input.name}</span>
                 </p>
               ))}
@@ -337,7 +337,7 @@ function SingleStudentForm({ classes }) {
         </select>
       </Field>
 
-      <div className="grid grid-cols-[110px_1fr] gap-3">
+      <div className="grid grid-cols-[120px_1fr] gap-3">
         <Field label="রোল *">
           <Input inputMode="numeric" value={f.roll} onChange={(e) => set('roll')(e.target.value.replace(/[^0-9০-৯]/g, ''))} placeholder="101" className="tabular" />
         </Field>

@@ -173,7 +173,7 @@ export const ReportsView = () => {
               <p className="px-4 py-3 text-[15px] font-bold text-ink">শিক্ষার্থী অনুযায়ী</p>
               {monthFees.map(({ f, s, st }) => (
                 <button key={f.id} type="button" onClick={() => s && openStudent(s)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
-                  <span className="tabular w-9 text-[13px] font-bold text-slate-400">{f.roll}</span>
+                  <span className="tabular min-w-[2.25rem] text-[13px] font-bold text-slate-400">{f.roll}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14.5px] font-semibold text-ink">{s?.name}</span>
                     {f.reason && <span className="block truncate text-[12px] text-amber-700">{f.reason}</span>}
