@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CLASS_INDEX_PATH, buildClassIndex } from '../../lib/classIndex';
 import {
   House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, Mail, KeyRound,
-  Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard,
+  Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard, Upload,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
@@ -12,6 +12,7 @@ import {
   STAFF_COUNTER_PATH, DEFAULT_STAFF_PREFIX, loginIdPath, staffEmail, isStaffEmail, formatStaffId, nextStaffSerial, generateStaffPassword,
 } from '../../lib/staffLogin';
 import { AccountSheet } from '../../components/AccountSheets';
+import { StudentImport } from './StudentImport';
 import { useBackHandler } from '../../lib/backstack';
 import { taka, monthBn, EN_MONTHS, waLink } from '../../lib/format';
 import {
@@ -252,9 +253,38 @@ const Mini = ({ label, value, cls }) => (
 
 function ClassesTab({ classes, users, teachers, onOpenClass }) {
   const [editing, setEditing] = useState(null); // {} for new, class for edit
+  const [importing, setImporting] = useState(false);
   return (
     <div>
-      <PageHeader title="ক্লাস" subtitle={`${classes.length}টি ক্লাস`} actions={<IconButton icon={Plus} label="নতুন ক্লাস" onClick={() => setEditing({})} />} />
+      <PageHeader
+        title="ক্লাস"
+        subtitle={`${classes.length}টি ক্লাস`}
+        actions={
+          <>
+            {classes.length > 0 && <IconButton icon={Upload} label="শিক্ষার্থী তালিকা ইমপোর্ট" onClick={() => setImporting(true)} />}
+            <IconButton icon={Plus} label="নতুন ক্লাস" onClick={() => setEditing({})} />
+          </>
+        }
+      />
+      {classes.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setImporting(true)}
+          className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-card ring-1 ring-slate-200/70"
+        >
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <Upload className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-bold text-ink">সব শিক্ষার্থীর তালিকা ইমপোর্ট</span>
+            <span className="block text-[12.5px] text-slate-500">Excel/CSV থেকে একবারে — প্রত্যেকে নিজের ক্লাসে যাবে</span>
+          </span>
+          <ChevronRight className="h-5 w-5 text-slate-300" />
+        </button>
+      )}
+      <Sheet open={importing} onClose={() => setImporting(false)} full title="শিক্ষার্থী তালিকা ইমপোর্ট" subtitle="ইনচার্জদের আর নিজে যোগ করতে হবে না">
+        {importing && <StudentImport classes={classes} onDone={() => setImporting(false)} />}
+      </Sheet>
       {classes.length === 0 ? (
         <EmptyState icon={School} title="কোনো ক্লাস নেই" action={<Button icon={Plus} onClick={() => setEditing({})}>নতুন ক্লাস</Button>} />
       ) : (

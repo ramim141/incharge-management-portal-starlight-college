@@ -2,10 +2,11 @@ import { getFirebaseConfig } from '../firebase';
 import { createFirebaseBackend } from './firebaseBackend';
 import { createLocalBackend } from './localBackend';
 
-// The app runs on Firebase (keys in .env.local). For offline testing only, VITE_LOCAL_TEST_DB=true
-// starts an empty database inside this browser instead. With neither, the app shows a setup screen.
-const config = getFirebaseConfig();
-const localTest = !config && import.meta.env.VITE_LOCAL_TEST_DB === 'true';
+// The app runs on Firebase (keys in .env.local). `npm run dev:local-test` sets VITE_LOCAL_TEST_DB=true:
+// then an empty database inside this browser is used and the real Firebase is never touched, even
+// if keys are present. With neither, the app shows a setup screen.
+const localTest = import.meta.env.VITE_LOCAL_TEST_DB === 'true';
+const config = localTest ? null : getFirebaseConfig();
 
 /** True when no backend is configured: App shows the "Firebase setup pending" screen */
 export const backendMissing = !config && !localTest;

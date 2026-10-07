@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { backend, isLocal } from '../backend';
-import { DEFAULT_CLASS_SETTINGS } from '../lib/defaults';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, pad } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels } from '../lib/format';
 import { newId, portalKey, quickHash } from '../lib/hash';
 import { buildPortalSnapshot } from '../lib/portal';
@@ -10,11 +10,9 @@ import { buildPortalSnapshot } from '../lib/portal';
 export const AppContext = createContext(null);
 
 const COLLS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance'];
-const pad = (n, w) => String(n).padStart(w, '0');
 
-export const studentIdFor = (classId, roll) => `${classId}-${pad(roll, 4)}`;
+export { studentIdFor };
 
-const monthDeadline = (month, year, day) => `${year}-${pad(EN_MONTHS.indexOf(month) + 1, 2)}-${pad(Math.min(28, Math.max(1, Number(day) || 10)), 2)}`;
 
 // "due" is always derived, so a fee row can never disagree with itself
 const normalizeFee = (f) => {
@@ -74,23 +72,10 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const currentMonth = EN_MONTHS[now.getMonth()];
   const currentYear = now.getFullYear();
 
-  const settings = useMemo(() => {
-    const c = classDoc || {};
-    return {
-      ...DEFAULT_CLASS_SETTINGS,
-      ...(c.settings || {}),
-      classCode: classId,
-      className: c.name || classId,
-      institutionName: institution?.name || '',
-      sectionName: [c.name, c.section, c.session && `সেশন ${c.session}`].filter(Boolean).join(' · '),
-      inchargeName: c.inchargeName || '',
-      inchargeDesignation: c.inchargeDesignation || '',
-      inchargePhone: c.inchargePhone || '',
-      inchargeEmail: c.inchargeEmail || '',
-      currentMonth,
-      currentYear,
-    };
-  }, [classDoc, classId, institution, currentMonth, currentYear]);
+  const settings = useMemo(
+    () => buildClassSettings({ classDoc, classId, institution, month: currentMonth, year: currentYear }),
+    [classDoc, classId, institution, currentMonth, currentYear],
+  );
   // Label helpers (groupBn, sectionBn…) read this class's own department / section names
   setClassLabels(settings);
 
@@ -141,42 +126,12 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       .replace(/\{roll\}/g, student.roll);
   };
 
-  const feeRow = (student, month = currentMonth, year = currentYear) => {
-    const amount = Number(student.monthlyFee || settings.defaultMonthlyFee);
-    return {
-      id: `fee-${student.id}-${year}-${month}`,
-      studentId: student.id,
-      roll: Number(student.roll),
-      month,
-      year,
-      amount,
-      paid: 0,
-      due: amount,
-      fine: 0,
-      deadline: monthDeadline(month, year, settings.defaultFeeDeadlineDay),
-      status: 'Due',
-      reason: '',
-      note: '',
-    };
-  };
+  const feeRow = (student, month = currentMonth, year = currentYear) => newFeeRow(student, settings, month, year);
 
   /* ───────────── actions ───────────── */
   const addStudent = async (input) => {
-    const id = newId('std');
-    const roll = Number(input.roll);
-    const studentId = studentIdFor(classId, roll);
-    const pin = String(input.pin || pad(Math.floor(Math.random() * 10000), 4));
-    const student = {
-      ...input,
-      id,
-      roll,
-      studentId,
-      pin,
-      monthlyFee: Number(input.monthlyFee || settings.defaultMonthlyFee),
-      status: input.status || 'active',
-      portalKey: portalKey(studentId, pin),
-      portalHash: null,
-    };
+    const student = newStudentRecord(input, classId, settings);
+    const { id } = student;
     await write([
       { type: 'set', path: P('students', id), data: student },
       { type: 'set', path: P('fees', `fee-${id}-${currentYear}-${currentMonth}`), data: feeRow(student) },

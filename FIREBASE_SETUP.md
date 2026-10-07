@@ -127,4 +127,4 @@ firebase deploy
 
 ### ডেভেলপারদের জন্য: Firebase ছাড়া পরীক্ষা
 
-`npm run dev:local-test` চালালে একটি খালি পরীক্ষামূলক ডাটাবেজ চালু হয় যা শুধু ওই ব্রাউজারে থাকে (`.env.localtest`)। আসল ব্যবহারে কখনো এটি চলে না — Firebase কী থাকলে সবসময় Firebase-ই ব্যবহার হয়।
+`npm run dev:local-test` চালালে একটি খালি পরীক্ষামূলক ডাটাবেজ চালু হয় যা শুধু ওই ব্রাউজারে থাকে (`.env.localtest`)। এই মোডে `.env.local`-এ Firebase কী থাকলেও আসল Firebase-এ কিছু যায় না; সাধারণ `npm run dev` ও `npm run build` সবসময় Firebase ব্যবহার করে।
