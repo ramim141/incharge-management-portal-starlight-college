@@ -904,6 +904,7 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
               <p className="text-[12.5px] text-slate-500">
                 {isLocal ? 'শুধু পরীক্ষার জন্য — তথ্য এই ব্রাউজারেই থাকে। আসল ব্যবহারের জন্য Firebase কী বসান।' : 'সব শিক্ষকের ফোনে একই তথ্য, ইন্টারনেট ছাড়াও কাজ করে।'}
               </p>
+              <p className="tabular mt-1 text-[11.5px] text-slate-400">অ্যাপ ভার্সন {__APP_VERSION__}</p>
             </div>
           </div>
         </Card>
