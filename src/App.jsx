@@ -11,6 +11,7 @@ import { WhatsAppSheet } from './components/WhatsAppSheet';
 import { FineSheet } from './components/FineSheet';
 import { StudentDetailSheet, StudentFormSheet } from './components/StudentSheets';
 import { ForcePasswordChange, AccountSheet } from './components/AccountSheets';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Button } from './components/ui';
 import { StudentPortal } from './views/StudentPortal';
 import { AdminLogin } from './views/AdminLogin';
@@ -202,6 +203,7 @@ export default function App() {
     <AuthProvider>
       <UIProvider>
         <Root />
+        <InstallPrompt />
       </UIProvider>
     </AuthProvider>
   );
