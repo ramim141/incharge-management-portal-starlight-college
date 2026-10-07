@@ -78,7 +78,8 @@ export const AdminLogin = ({ onPortal }) => {
     if (!email) return fail('আগে আপনার লগইন আইডি বা ইমেইল লিখুন');
     try {
       const sentTo = await resetPassword(email);
-      toast(`${sentTo} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
+      // Firebase doesn't say whether the address has an account, so word it honestly
+      toast(`${sentTo} এ অ্যাকাউন্ট থাকলে পাসওয়ার্ড বদলানোর লিংক যাবে — Spam/Promotions ফোল্ডারও দেখুন`, 'info');
     } catch (err) {
       fail(errorText(err));
     }
