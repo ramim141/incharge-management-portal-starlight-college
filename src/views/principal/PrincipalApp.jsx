@@ -261,7 +261,7 @@ function ClassesTab({ classes, users, teachers, onOpenClass }) {
         subtitle={`${classes.length}টি ক্লাস`}
         actions={
           <>
-            {classes.length > 0 && <IconButton icon={Upload} label="শিক্ষার্থী তালিকা ইমপোর্ট" onClick={() => setImporting(true)} />}
+            {classes.length > 0 && <IconButton icon={Upload} label="শিক্ষার্থী যোগ" onClick={() => setImporting(true)} />}
             <IconButton icon={Plus} label="নতুন ক্লাস" onClick={() => setEditing({})} />
           </>
         }
@@ -276,13 +276,13 @@ function ClassesTab({ classes, users, teachers, onOpenClass }) {
             <Upload className="h-5 w-5" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-bold text-ink">সব শিক্ষার্থীর তালিকা ইমপোর্ট</span>
-            <span className="block text-[12.5px] text-slate-500">Excel/CSV থেকে একবারে — প্রত্যেকে নিজের ক্লাসে যাবে</span>
+            <span className="block text-[15px] font-bold text-ink">শিক্ষার্থী যোগ করুন</span>
+            <span className="block text-[12.5px] text-slate-500">একজন করে বা পুরো তালিকা — প্রত্যেকে নিজের ক্লাসে যাবে</span>
           </span>
           <ChevronRight className="h-5 w-5 text-slate-300" />
         </button>
       )}
-      <Sheet open={importing} onClose={() => setImporting(false)} full title="শিক্ষার্থী তালিকা ইমপোর্ট" subtitle="ইনচার্জদের আর নিজে যোগ করতে হবে না">
+      <Sheet open={importing} onClose={() => setImporting(false)} full title="শিক্ষার্থী যোগ" subtitle="সরাসরি ক্লাসের ইনচার্জের তালিকায় যাবে">
         {importing && <StudentImport classes={classes} onDone={() => setImporting(false)} />}
       </Sheet>
       {classes.length === 0 ? (

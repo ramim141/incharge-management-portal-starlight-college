@@ -1,14 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Upload, FileDown, ClipboardPaste, CheckCircle2, AlertTriangle, Users, KeyRound, ArrowLeft } from 'lucide-react';
+import { Upload, FileDown, ClipboardPaste, CheckCircle2, AlertTriangle, Users, KeyRound, ArrowLeft, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { backend, errorText } from '../../backend';
-import { Button, Field, Textarea, Badge, cx } from '../../components/ui';
-import { EN_MONTHS, downloadCSV, todayISO } from '../../lib/format';
+import { Button, Field, Input, Textarea, Badge, Segmented, cx } from '../../components/ui';
+import { EN_MONTHS, GENDERS, downloadCSV, todayISO } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
 
-/** Principal: add a whole institution's student list at once; each student lands in their class */
-export function StudentImport({ classes, onDone }) {
+/** The whole institution's list at once; each student lands in their class */
+function ListImport({ classes, onDone }) {
   const { institution } = useAuth();
   const { toast } = useUI();
   const fileRef = useRef(null);
@@ -231,6 +231,176 @@ export function StudentImport({ classes, onDone }) {
       <Button size="lg" block disabled={!text.trim() || busy} onClick={preview}>
         {busy ? 'যাচাই হচ্ছে…' : 'যাচাই করে দেখুন'}
       </Button>
+    </div>
+  );
+}
+
+/** Principal: add students — one at a time with a form, or a whole list at once */
+export function StudentImport({ classes, onDone }) {
+  const [mode, setMode] = useState('one');
+  return (
+    <div className="pt-1">
+      <Segmented
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'one', label: 'একজন করে' },
+          { value: 'list', label: 'পুরো তালিকা' },
+        ]}
+      />
+      <div className="mt-4">{mode === 'one' ? <SingleStudentForm classes={classes} /> : <ListImport classes={classes} onDone={onDone} />}</div>
+    </div>
+  );
+}
+
+const selectCls =
+  'h-12 w-full rounded-2xl bg-slate-50 px-4 text-[16px] font-medium text-ink outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-500';
+
+const blankForm = (classCode) => ({
+  classCode, roll: '', name: '', group: '', section: '', gender: '', phone: '', father: '', mother: '', address: '', pin: '',
+});
+
+/** One student at a time; goes through the same checks and records as the list import */
+function SingleStudentForm({ classes }) {
+  const { institution } = useAuth();
+  const { toast } = useUI();
+  const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [last, setLast] = useState(null); // the student just added (to show their PIN)
+  const [showPin, setShowPin] = useState(false);
+  const set = (k) => (e) => {
+    setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
+    setErr('');
+  };
+
+  const cls = classes.find((c) => c.id === f.classCode);
+  const departments = cls?.settings?.departments ?? [];
+  const sections = cls?.settings?.sections ?? [];
+  const useGender = cls?.settings?.useGender !== false;
+
+  const pickClass = (code) => setF((x) => ({ ...blankForm(code), gender: x.gender }));
+
+  const save = async () => {
+    if (!cls) return setErr('ক্লাস বাছুন');
+    if (!f.roll || !f.name.trim()) return setErr('রোল ও নাম দিন');
+    setBusy(true);
+    try {
+      const existing = { [cls.id]: await backend.getCollection(['classes', cls.id, 'students']) };
+      const header = ['class', 'roll', 'name', 'department', 'section', 'gender', 'phone', 'father', 'mother', 'address', 'pin'];
+      const row = [cls.id, f.roll, f.name, f.group, f.section, f.gender, f.phone, f.father, f.mother, f.address, f.pin];
+      const { plan, errors } = planImport([header, row], { classes, existing, defaultClass: cls.id });
+      if (errors.length) throw Object.assign(new Error(errors[0].msg), { code: 'form' });
+      if (plan[0]?.skipped.length) throw Object.assign(new Error(`রোল ${f.roll} এই ক্লাসে আগে থেকেই আছে`), { code: 'form' });
+      const now = new Date();
+      const { ops, created } = buildImportOps(plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear() });
+      await backend.write(ops, { wait: true });
+      setLast(created[0]);
+      setShowPin(false);
+      toast(`${created[0].name} — ${cls.name}-তে যুক্ত হয়েছে`);
+      // Ready for the next student of the same class: next roll, same department/section/gender
+      setF((x) => ({ ...blankForm(x.classCode), roll: String(Number(x.roll) + 1), group: x.group, section: x.section, gender: x.gender }));
+    } catch (e) {
+      setErr(e.code === 'form' ? e.message : errorText(e));
+    } finally {
+      setBusy(false);
+    }
+    return undefined;
+  };
+
+  return (
+    <div className="space-y-4">
+      {last && (
+        <div className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-3.5 ring-1 ring-emerald-100">
+          <CheckCircle2 className="h-6 w-6 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14.5px] font-bold text-emerald-900">
+              {last.name} · রোল {last.roll}
+            </p>
+            <p className="text-[12.5px] text-emerald-800">{last.className} — পোর্টালের পিন:</p>
+          </div>
+          <button type="button" onClick={() => setShowPin((v) => !v)} className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[15px] font-bold tracking-widest text-ink ring-1 ring-emerald-200">
+            <span className="tabular">{showPin ? last.pin : '••••'}</span>
+            {showPin ? <EyeOff className="h-4 w-4 text-slate-400" /> : <Eye className="h-4 w-4 text-slate-400" />}
+          </button>
+        </div>
+      )}
+
+      <Field label="ক্লাস *">
+        <select value={f.classCode} onChange={(e) => pickClass(e.target.value)} className={selectCls}>
+          <option value="">— ক্লাস বাছুন —</option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({c.id}){c.inchargeName ? ` · ${c.inchargeName}` : ''}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-[110px_1fr] gap-3">
+        <Field label="রোল *">
+          <Input inputMode="numeric" value={f.roll} onChange={(e) => set('roll')(e.target.value.replace(/[^0-9০-৯]/g, ''))} placeholder="101" className="tabular" />
+        </Field>
+        <Field label="নাম *">
+          <Input value={f.name} onChange={set('name')} placeholder="শিক্ষার্থীর নাম" />
+        </Field>
+      </div>
+
+      {departments.length > 0 && (
+        <Field label="বিভাগ">
+          <select value={f.group} onChange={set('group')} className={selectCls}>
+            <option value="">— বাছুন —</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.bn}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {sections.length > 0 && (
+        <Field label="শাখা">
+          <select value={f.section} onChange={set('section')} className={selectCls}>
+            <option value="">— বাছুন —</option>
+            {sections.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.bn}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+      {useGender && (
+        <Field label="ছাত্র / ছাত্রী">
+          <Segmented value={f.gender} onChange={set('gender')} options={GENDERS.map((g) => ({ value: g.id, label: g.bn }))} />
+        </Field>
+      )}
+
+      <Field label="অভিভাবকের মোবাইল">
+        <Input type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="01XXXXXXXXX" />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="পিতার নাম">
+          <Input value={f.father} onChange={set('father')} />
+        </Field>
+        <Field label="মাতার নাম">
+          <Input value={f.mother} onChange={set('mother')} />
+        </Field>
+      </div>
+      <Field label="ঠিকানা">
+        <Input value={f.address} onChange={set('address')} />
+      </Field>
+      <Field label="পোর্টাল পিন" hint="খালি রাখলে আপনাআপনি তৈরি হবে">
+        <Input inputMode="numeric" maxLength={6} value={f.pin} onChange={(e) => set('pin')(e.target.value.replace(/\D/g, ''))} className="tabular tracking-[0.3em]" />
+      </Field>
+
+      {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
+
+      <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
+        <Button size="lg" block icon={UserPlus} disabled={busy} onClick={save}>
+          {busy ? 'যোগ হচ্ছে…' : 'শিক্ষার্থী যোগ করুন'}
+        </Button>
+      </div>
     </div>
   );
 }
