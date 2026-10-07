@@ -1,22 +1,26 @@
-import { initializeApp, deleteApp } from 'firebase/app';
+import { initializeApp, deleteApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, createUserWithEmailAndPassword,
   sendPasswordResetEmail, EmailAuthProvider, reauthenticateWithCredential, updatePassword, verifyBeforeUpdateEmail,
 } from 'firebase/auth';
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, onSnapshot, getDoc as fbGetDoc,
+  initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, onSnapshot, getDoc as fbGetDoc,
   getDocs, writeBatch,
 } from 'firebase/firestore';
 
 // Generic document store on top of Firebase. Paths are arrays like ['classes', 'XI-2026', 'students', 'std-1'].
 export function createFirebaseBackend(config) {
-  const app = initializeApp(config);
+  // Reuse the app if this module is evaluated again (dev hot-reload) — Firebase can only be set up once
+  const fresh = !getApps().some((a) => a.name === '[DEFAULT]');
+  const app = fresh ? initializeApp(config) : getApp();
   const auth = getAuth(app);
   // Offline-first: reads/writes work without network and sync when it returns
-  const db = initializeFirestore(app, {
-    ignoreUndefinedProperties: true,
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-  });
+  const db = fresh
+    ? initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      })
+    : getFirestore(app);
 
   const errorListeners = new Set();
   const reportError = (e) => {
@@ -25,6 +29,42 @@ export function createFirebaseBackend(config) {
   };
 
   const ref = (path) => doc(db, ...path);
+
+  /**
+   * A Firestore listener stops for good after an error. "Permission denied" is often only momentary
+   * (e.g. just after first-run setup, before the server has the new profile), so re-listen with
+   * backoff and only report the error if it persists.
+   */
+  const listen = (start, cb, empty) => {
+    let unsub = () => {};
+    let timer = null;
+    let tries = 0;
+    let stopped = false;
+    const run = () => {
+      unsub = start(
+        (value) => {
+          tries = 0;
+          cb(value);
+        },
+        (e) => {
+          if (stopped) return;
+          if (e?.code === 'permission-denied' && tries < 5) {
+            tries += 1;
+            timer = setTimeout(run, 800 * 2 ** (tries - 1));
+            return;
+          }
+          reportError(e);
+          cb(empty);
+        },
+      );
+    };
+    run();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      unsub();
+    };
+  };
 
   return {
     mode: 'firebase',
@@ -74,24 +114,10 @@ export function createFirebaseBackend(config) {
     },
 
     subscribeDoc(path, cb) {
-      return onSnapshot(
-        ref(path),
-        (snap) => cb(snap.exists() ? { id: snap.id, ...snap.data() } : null),
-        (e) => {
-          reportError(e);
-          cb(null);
-        },
-      );
+      return listen((onNext, onError) => onSnapshot(ref(path), (snap) => onNext(snap.exists() ? { id: snap.id, ...snap.data() } : null), onError), cb, null);
     },
     subscribeCollection(path, cb) {
-      return onSnapshot(
-        collection(db, ...path),
-        (snap) => cb(snap.docs.map((d) => ({ ...d.data(), id: d.id }))),
-        (e) => {
-          reportError(e);
-          cb([]);
-        },
-      );
+      return listen((onNext, onError) => onSnapshot(collection(db, ...path), (snap) => onNext(snap.docs.map((d) => ({ ...d.data(), id: d.id }))), onError), cb, []);
     },
     async getDoc(path) {
       const snap = await fbGetDoc(ref(path));

@@ -78,7 +78,8 @@ const fieldCls =
 
 function LoginCard({ onSuccess }) {
   const last = useMemo(readLast, []);
-  const [classes, setClasses] = useState(null); // public class list for the picker
+  const [classes, setClasses] = useState(null); // public class list (null = still loading)
+  const [indexMissing, setIndexMissing] = useState(false);
   const [cls, setCls] = useState(''); // only typed when the public class list isn't available
   const [choices, setChoices] = useState(null); // same roll + PIN found in more than one class
   const [roll, setRoll] = useState(last.roll ? String(last.roll) : '');
@@ -93,7 +94,10 @@ function LoginCard({ onSuccess }) {
 
   useEffect(
     () =>
-      backend.subscribeDoc(CLASS_INDEX_PATH, (d) => setClasses(d?.classes || [])),
+      backend.subscribeDoc(CLASS_INDEX_PATH, (d) => {
+        setIndexMissing(!d);
+        setClasses(d?.classes || []);
+      }),
     [],
   );
 
@@ -114,7 +118,7 @@ function LoginCard({ onSuccess }) {
     setTimeout(() => setShake(false), 450);
   };
 
-  const typedCode = classes && classes.length === 0; // no public list yet → type the class code
+  const typedCode = indexMissing; // principal hasn't opened the app yet → type the class code
 
   const enter = (doc) => {
     saveLock({ tries: 0, until: 0 });
@@ -129,7 +133,7 @@ function LoginCard({ onSuccess }) {
     e.preventDefault();
     if (locked || busy || !classes) return;
     const codes = typedCode ? [String(cls).trim().toUpperCase()].filter(Boolean) : classes.map((c) => c.code);
-    if (!codes.length) return fail('ক্লাস কোড লেখো');
+    if (!codes.length && typedCode) return fail('ক্লাস কোড লেখো');
     if (!/^\d{1,4}$/.test(roll)) return fail('রোল নম্বর লেখো');
     if (!/^\d{4,6}$/.test(pin)) return fail('৪ সংখ্যার পিন দাও');
     setBusy(true);
