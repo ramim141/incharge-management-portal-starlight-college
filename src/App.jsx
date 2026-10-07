@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { GraduationCap, LogOut, UserX, School, Settings2, KeyRound, Mail } from 'lucide-react';
+import { LogOut, UserX, School, Settings2, KeyRound, Mail } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { UIProvider, useUI } from './context/UIContext';
@@ -12,7 +12,7 @@ import { FineSheet } from './components/FineSheet';
 import { StudentDetailSheet, StudentFormSheet } from './components/StudentSheets';
 import { ForcePasswordChange, AccountSheet } from './components/AccountSheets';
 import { InstallPrompt } from './components/InstallPrompt';
-import { Button } from './components/ui';
+import { Button, Logo } from './components/ui';
 import { StudentPortal } from './views/StudentPortal';
 import { AdminLogin } from './views/AdminLogin';
 import { PrincipalApp } from './views/principal/PrincipalApp';
@@ -44,9 +44,7 @@ export function Splash({ text = 'লোড হচ্ছে…' }) {
   return (
     <div className="grid min-h-dvh place-items-center bg-canvas">
       <div className="flex flex-col items-center gap-4">
-        <div className="grid h-16 w-16 animate-pulse place-items-center rounded-[22px] bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lift">
-          <GraduationCap className="h-8 w-8" />
-        </div>
+        <Logo size={88} className="animate-pulse drop-shadow-md" />
         <p className="text-[14px] font-medium text-slate-500">{text}</p>
       </div>
     </div>

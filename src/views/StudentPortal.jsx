@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  GraduationCap, ShieldCheck, LogOut, Phone, CheckCircle2, AlertCircle, ReceiptText, ChevronRight,
+  ShieldCheck, LogOut, Phone, CheckCircle2, AlertCircle, ReceiptText, ChevronRight,
   UserRound, Users, MapPin, Lock, ArrowRight, Hash, School, ChevronLeft, KeyRound, Eye, EyeOff,
   LayoutGrid, Wallet, CalendarCheck, Gavel,
 } from 'lucide-react';
@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
-import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
+import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
 import {
   taka, monthBn, groupBn, fmtDate, feeStatus, ACADEMIC_MONTHS, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
 } from '../lib/format';
@@ -45,8 +45,8 @@ export const StudentPortal = ({ onStaffLogin }) => {
 
       <div className="relative mx-auto flex min-h-dvh max-w-[440px] flex-col px-5 pb-8 pt-safe">
         <div className="mt-12 text-center text-white max-[374px]:mt-8">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-[22px] bg-white/15 ring-1 ring-white/25 backdrop-blur">
-            <GraduationCap className="h-8 w-8" />
+          <div className="mx-auto grid h-24 w-24 place-items-center rounded-[28px] bg-white p-1.5 shadow-xl ring-4 ring-white/20 max-[374px]:h-20 max-[374px]:w-20">
+            <Logo size={84} className="max-[374px]:h-[68px] max-[374px]:w-[68px]" />
           </div>
           <p className="mt-4 text-[13px] font-semibold uppercase tracking-[0.2em] text-white/70">Student Portal</p>
           <h1 className="mt-1 text-[26px] font-extrabold leading-tight max-[374px]:text-[23px]">শিক্ষার্থী তথ্য পোর্টাল</h1>
@@ -352,7 +352,7 @@ function StudentProfile({ student: s, onExit }) {
         <div className={cx('no-print sticky top-0 z-20 bg-canvas/95 pb-2 pt-safe backdrop-blur-xl', BLEED)}>
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-2 text-[15px] font-bold text-ink">
-              <GraduationCap className="h-5 w-5 text-brand-600" /> আমার প্রোফাইল
+              <Logo size={32} /> আমার প্রোফাইল
             </div>
             <Button variant="secondary" size="sm" icon={LogOut} onClick={onExit} aria-label="বের হও" title="বের হও" className="w-10 px-0" />
           </div>

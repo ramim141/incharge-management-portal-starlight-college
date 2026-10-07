@@ -1,8 +1,8 @@
 import React from 'react';
-import { Printer, Check, GraduationCap } from 'lucide-react';
+import { Printer, Check } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, Button } from './ui';
+import { Sheet, Button, Logo } from './ui';
 import { taka, fmtDate, fmtTime, studentTags, waLink, methodBn } from '../lib/format';
 
 const WhatsAppIcon = (props) => (
@@ -62,8 +62,8 @@ export function ReceiptSheet() {
 
           <div className="relative overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200">
             <div className="bg-gradient-to-br from-brand-600 to-brand-800 px-5 pb-5 pt-5 text-center text-white">
-              <div className="mx-auto mb-2 grid h-11 w-11 place-items-center rounded-2xl bg-white/15">
-                <GraduationCap className="h-6 w-6" />
+              <div className="mx-auto mb-2 grid h-14 w-14 place-items-center rounded-2xl bg-white p-1">
+                <Logo size={48} />
               </div>
               <p className="text-[15px] font-bold leading-snug">{settings.institutionName}</p>
               <p className="text-[12px] text-white/70">{settings.sectionName}</p>

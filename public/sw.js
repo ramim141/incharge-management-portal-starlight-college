@@ -1,9 +1,9 @@
 // Minimal service worker: makes the app installable and lets it open without internet.
 // Firebase traffic is never touched — Firestore has its own offline cache.
-const CACHE = 'class-portal-v2';
+const CACHE = 'class-portal-v3';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/favicon.svg'])));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png'])));
   self.skipWaiting();
 });
 

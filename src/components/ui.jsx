@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, ChevronLeft, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useBackHandler } from '../lib/backstack';
+import logoUrl from '../assets/images/logo.png';
 
 export const cx = (...c) => c.filter(Boolean).join(' ');
 
@@ -102,6 +103,11 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
       {initials}
     </div>
   );
+}
+
+/** The college logo (src/assets/images/logo.png) — used on the portal, login, splash and receipts */
+export function Logo({ size = 64, className }) {
+  return <img src={logoUrl} alt="Starlight College" width={size} height={size} style={{ width: size, height: size }} className={cx('shrink-0 object-contain', className)} />;
 }
 
 /** Students are shown by their roll number instead of a photo. Rolls can be up to 6 digits: long

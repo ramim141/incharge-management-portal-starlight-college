@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { GraduationCap, Mail, Lock, Eye, EyeOff, ArrowLeft, Building2, UserRound, Phone, IdCard } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, Building2, UserRound, Phone, IdCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { errorText } from '../backend';
-import { Button, Field, Input, cx } from '../components/ui';
+import { Button, Field, Input, Logo, cx } from '../components/ui';
 
 const Hero = ({ title, subtitle, onPortal }) => (
   <>
@@ -16,8 +16,8 @@ const Hero = ({ title, subtitle, onPortal }) => (
       শিক্ষার্থী পোর্টাল
     </button>
     <div className="mt-8 text-white max-[374px]:mt-5">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/15 ring-1 ring-white/25">
-        <GraduationCap className="h-7 w-7" />
+      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white p-1 shadow-lg ring-4 ring-white/20">
+        <Logo size={56} />
       </div>
       <h1 className="mt-5 text-[28px] font-extrabold leading-tight max-[374px]:text-[24px]">{title}</h1>
       {subtitle && <p className="mt-1 text-[14px] text-white/75">{subtitle}</p>}
