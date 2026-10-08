@@ -20,7 +20,7 @@ import {
   CARD_GRID, DOCK, DOCK_BOTTOM,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
-import { assignOps, deleteClassDeep, CLASS_PRESETS } from './principalData';
+import { assignOps, deleteClassDeep, renameClassCode, CLASS_PRESETS } from './principalData';
 
 const TABS = [
   { id: 'home', label: 'ওভারভিউ', icon: House },
@@ -316,15 +316,34 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
   const save = async () => {
     const code = String(f.code).trim().toUpperCase();
     const e = {};
-    if (!cls) {
+    const renaming = cls && code !== cls.id;
+    if (!cls || renaming) {
       if (!/^[A-Z0-9][A-Z0-9-]{1,18}[A-Z0-9]$/.test(code)) e.code = 'ইংরেজি বড় হাতের অক্ষর, সংখ্যা ও - (যেমন XI-2026)';
       else if (classes.some((c) => c.id === code)) e.code = 'এই কোড আগেই আছে';
     }
     if (!String(f.name).trim()) e.name = 'ক্লাসের নাম দিন';
     setErr(e);
     if (Object.keys(e).length) return;
+    if (renaming) {
+      const ok = await confirm({
+        title: `কোড ${cls.id} → ${code}?`,
+        message: `এই ক্লাসের সব তথ্য নতুন কোডে সরানো হবে এবং স্টুডেন্ট আইডি হবে ${code}-0101 ধরনের। শিক্ষার্থীরা আগের মতোই রোল + পিন দিয়ে ঢুকবে। আগের রশিদ নম্বর বদলাবে না।`,
+        confirmText: 'কোড বদলান',
+        icon: Pencil,
+      });
+      if (!ok) return;
+    }
     setBusy(true);
-    const id = cls ? cls.id : code;
+    if (renaming) {
+      try {
+        await renameClassCode({ classes, users, oldCode: cls.id, newCode: code });
+      } catch (er) {
+        toast(errorText(er), 'error');
+        setBusy(false);
+        return;
+      }
+    }
+    const id = code;
     const settings = {
       ...DEFAULT_CLASS_SETTINGS,
       ...(cls?.settings || {}),
@@ -336,13 +355,16 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
     const ops = cls
       ? [{ type: 'merge', path: ['classes', id], data: base }]
       : [{ type: 'set', path: ['classes', id], data: { ...base, inchargeUid: null, inchargeName: '', inchargePhone: '', inchargeEmail: '', inchargeDesignation: '', createdAt: new Date().toISOString() } }];
-    const classesAfter = cls ? classes : [...classes, { id, inchargeUid: null }];
+    // After a code change the lists still hold the old code — point them at the new one
+    const renamedClasses = renaming ? classes.map((c) => (c.id === cls.id ? { ...c, id: code } : c)) : classes;
+    const renamedUsers = renaming ? users.map((u) => (u.classId === cls.id ? { ...u, classId: code } : u)) : users;
+    const classesAfter = cls ? renamedClasses : [...classes, { id, inchargeUid: null }];
     if ((f.inchargeUid || null) !== (cls?.inchargeUid || null)) {
-      ops.push(...assignOps({ classes: classesAfter, users, classCode: id, uid: f.inchargeUid || null }));
+      ops.push(...assignOps({ classes: classesAfter, users: renamedUsers, classCode: id, uid: f.inchargeUid || null }));
     }
     try {
-      await backend.write(ops, { wait: !cls });
-      toast(cls ? 'ক্লাস আপডেট হয়েছে' : `${base.name} তৈরি হয়েছে`);
+      await backend.write(ops, { wait: !cls || renaming });
+      toast(renaming ? `ক্লাস কোড এখন ${code}` : cls ? 'ক্লাস আপডেট হয়েছে' : `${base.name} তৈরি হয়েছে`);
       onDone();
     } catch (er) {
       toast(errorText(er), 'error');
@@ -395,9 +417,15 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       <Field
         label="ক্লাস কোড"
         error={err.code}
-        hint={cls ? 'কোড বদলানো যায় না' : 'স্টুডেন্ট আইডির শুরুতে বসবে, যেমন XI-2026 → XI-2026-0105। পরে বদলানো যাবে না।'}
+        hint={
+          cls
+            ? f.code !== cls.id
+              ? 'সংরক্ষণ করলে সব তথ্য নতুন কোডে সরবে; শিক্ষার্থীদের লগইন একই থাকবে'
+              : 'বদলাতে পারেন — স্টুডেন্ট আইডিও সাথে বদলাবে'
+            : 'স্টুডেন্ট আইডির শুরুতে বসবে, যেমন XI-2026 → XI-2026-0105'
+        }
       >
-        <Input value={f.code} disabled={!!cls} onChange={(e) => setF((x) => ({ ...x, code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') }))} placeholder="XI-2026" className="tabular uppercase disabled:opacity-60" />
+        <Input value={f.code} onChange={(e) => setF((x) => ({ ...x, code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') }))} placeholder="XI-2026" className="tabular uppercase disabled:opacity-60" />
       </Field>
 
       <div>
