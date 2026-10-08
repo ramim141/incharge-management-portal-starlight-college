@@ -75,6 +75,7 @@ export const AttendanceView = () => {
   const [records, setRecords] = useState(() => ({ ...(attendance[todayISO()] || {}) }));
   const [dirty, setDirty] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
+  const [absentInput, setAbsentInput] = useState('');
   // How-to popup shown when the page opens, until the teacher ticks "আর দেখাবেন না"
   const [help, setHelp] = useState(() => {
     try {
