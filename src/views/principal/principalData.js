@@ -1,6 +1,7 @@
 import { backend } from '../../backend';
 import { studentIdFor } from '../../lib/classLogic';
 import { portalKey } from '../../lib/hash';
+import { STAFF_DOMAIN, loginIdPath, generateStaffPassword } from '../../lib/staffLogin';
 
 // Ops that keep class.inchargeUid and user.classId pointing at each other
 // ("one teacher = one class"): assigning someone clears their old class and the class's old teacher.
@@ -51,7 +52,38 @@ export async function deleteClassDeep({ classes, users, classCode }) {
   await backend.write(ops, { wait: true });
 }
 
-const CLASS_COLLECTIONS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance'];
+/**
+ * Gives a teacher a new password while keeping their login ID (e.g. T001). The free Firebase plan
+ * can't change someone else's password, so a fresh login is created, the ID is pointed at it and
+ * the profile + class duty move over; the old login is left with no profile, so it can't be used.
+ */
+export async function reissueTeacherLogin(t) {
+  const password = generateStaffPassword();
+  const email = `${t.loginId.toLowerCase()}-${Date.now().toString(36)}@${STAFF_DOMAIN}`;
+  const uid = await backend.createAccount(email, password, { secondary: true });
+  const { id: oldUid, uid: _u, ...profile } = t;
+  const ops = [
+    { type: 'set', path: ['users', uid], data: { ...profile, email, pendingEmail: null, mustChangePassword: true, reissuedAt: new Date().toISOString() } },
+    { type: 'set', path: loginIdPath(t.loginId), data: { email, uid } },
+  ];
+  if (t.classId) ops.push({ type: 'merge', path: ['classes', t.classId], data: { inchargeUid: uid } });
+  await backend.write(ops, { wait: true });
+  await backend.write([{ type: 'delete', path: ['users', oldUid] }], { wait: true });
+  return { ...profile, id: uid, email, password };
+}
+
+/** Removes a teacher: class duty, profile and login ID (the class's data stays) */
+export async function deleteTeacher({ t, classes, users }) {
+  const ops = t.classId ? assignOps({ classes, users, classCode: null, uid: t.id }).filter((op) => op.path[0] !== 'users') : [];
+  ops.push({ type: 'delete', path: ['users', t.id] });
+  if (t.loginId) {
+    const entry = await backend.getDoc(loginIdPath(t.loginId));
+    if (!entry || entry.uid === t.id) ops.push({ type: 'delete', path: loginIdPath(t.loginId) });
+  }
+  await backend.write(ops, { wait: true });
+}
+
+const CLASS_COLLECTIONS =['students', 'fees', 'examFees', 'fines', 'payments', 'attendance'];
 
 /**
  * Changes a class's code. The code is the class's document id and part of every Student ID, so

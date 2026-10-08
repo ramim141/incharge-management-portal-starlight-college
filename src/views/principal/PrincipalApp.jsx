@@ -20,7 +20,7 @@ import {
   CARD_GRID, DOCK, DOCK_BOTTOM,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
-import { assignOps, deleteClassDeep, renameClassCode, CLASS_PRESETS } from './principalData';
+import { assignOps, deleteClassDeep, renameClassCode, reissueTeacherLogin, deleteTeacher, CLASS_PRESETS } from './principalData';
 
 const TABS = [
   { id: 'home', label: 'ওভারভিউ', icon: House },
@@ -553,11 +553,22 @@ function TeachersTab({ classes, users, teachers }) {
           />
         )}
       </Sheet>
-      <Sheet open={!!created} onClose={() => setCreated(null)} title="অ্যাকাউন্ট তৈরি হয়েছে" subtitle="লগইন তথ্য শিক্ষককে জানিয়ে দিন">
+      <Sheet open={!!created} onClose={() => setCreated(null)} title={created?.reissued ? 'নতুন পাসওয়ার্ড তৈরি হয়েছে' : 'অ্যাকাউন্ট তৈরি হয়েছে'} subtitle="লগইন তথ্য শিক্ষককে জানিয়ে দিন">
         {created && <LoginInfo info={created} />}
       </Sheet>
       <Sheet open={!!open} onClose={() => setOpenId(null)} full title={open?.name} subtitle={open?.loginId ? `লগইন আইডি ${open.loginId}` : open?.email}>
-        {open && <TeacherDetail t={open} classes={classes} users={users} onClose={() => setOpenId(null)} />}
+        {open && (
+          <TeacherDetail
+            t={open}
+            classes={classes}
+            users={users}
+            onClose={() => setOpenId(null)}
+            onReissued={(info) => {
+              setOpenId(null);
+              setTimeout(() => setCreated(info), 80);
+            }}
+          />
+        )}
       </Sheet>
     </div>
   );
@@ -718,10 +729,9 @@ function LoginInfo({ info }) {
   );
 }
 
-function TeacherDetail({ t, classes, users, onClose }) {
+function TeacherDetail({ t, classes, users, onClose, onReissued }) {
   const { toast, confirm } = useUI();
   const [f, setF] = useState({ name: t.name || '', phone: t.phone || '', designation: t.designation || '' });
-  const [newPw, setNewPw] = useState(null);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const cls = classes.find((c) => c.id === t.classId);
 
@@ -754,19 +764,55 @@ function TeacherDetail({ t, classes, users, onClose }) {
   };
 
   const hasRecovery = !isStaffEmail(t.email);
-  const resetPw = async () => {
+  const [busy, setBusy] = useState(false);
+
+  // Teachers with a login ID: new 6-digit password, same ID (works on the free Firebase plan)
+  const reissue = async () => {
+    const ok = await confirm({
+      title: `${t.loginId}-এর নতুন পাসওয়ার্ড?`,
+      message: 'আগের পাসওয়ার্ড আর কাজ করবে না। আইডি একই থাকবে, ক্লাসের দায়িত্বও থাকবে। প্রথম লগইনে শিক্ষককে নিজের পাসওয়ার্ড দিতে হবে।',
+      confirmText: 'নতুন পাসওয়ার্ড তৈরি',
+      icon: KeyRound,
+    });
+    if (!ok) return;
+    setBusy(true);
     try {
-      if (isLocal) {
-        const pw = generateStaffPassword();
-        await backend.setPassword(t.email, pw);
-        await backend.write([{ type: 'merge', path: ['users', t.id], data: { mustChangePassword: true } }]);
-        setNewPw(pw);
-      } else {
-        await backend.resetPassword(t.email);
-        toast(`${t.email} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
-      }
+      const info = await reissueTeacherLogin(t);
+      toast(`${t.loginId}: নতুন পাসওয়ার্ড তৈরি হয়েছে`);
+      onReissued?.({ ...info, reissued: true, className: cls?.name });
     } catch (e) {
       toast(errorText(e), 'error');
+      setBusy(false);
+    }
+  };
+
+  // Older email-based accounts: reset link to that email
+  const resetPw = async () => {
+    try {
+      await backend.resetPassword(t.email);
+      toast(`${t.email} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
+    } catch (e) {
+      toast(errorText(e), 'error');
+    }
+  };
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: `${t.name}-এর অ্যাকাউন্ট মুছবেন?`,
+      message: `${t.loginId ? `আইডি ${t.loginId} দিয়ে আর লগইন করা যাবে না। ` : ''}${cls ? `ক্লাসের দায়িত্ব (${cls.name}) খালি হবে; ক্লাসের সব তথ্য থাকবে। ` : ''}এটি ফেরানো যাবে না।`,
+      confirmText: 'মুছে ফেলুন',
+      tone: 'danger',
+      icon: Trash2,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await deleteTeacher({ t, classes, users });
+      toast('শিক্ষকের অ্যাকাউন্ট মুছে ফেলা হয়েছে');
+      onClose();
+    } catch (e) {
+      toast(errorText(e), 'error');
+      setBusy(false);
     }
   };
 
@@ -838,19 +884,23 @@ function TeacherDetail({ t, classes, users, onClose }) {
           {hasRecovery ? `রিকভারি ইমেইল: ${t.email}` : 'রিকভারি ইমেইল নেই — শিক্ষক মেনু থেকে নিজে যোগ করতে পারবেন।'}
           {t.mustChangePassword ? ' · এখনো প্রথম পাসওয়ার্ড বদলানো হয়নি' : ''}
         </p>
-        {(isLocal || hasRecovery) && (
-          <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
-            {isLocal ? 'নতুন পাসওয়ার্ড দিন' : 'পাসওয়ার্ড রিসেট লিংক পাঠান'}
+        {t.loginId ? (
+          <Button variant="secondary" icon={KeyRound} block disabled={busy} onClick={reissue}>
+            নতুন পাসওয়ার্ড তৈরি করুন
           </Button>
+        ) : (
+          hasRecovery && (
+            <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
+              পাসওয়ার্ড রিসেট লিংক পাঠান
+            </Button>
+          )
         )}
-        {!isLocal && !hasRecovery && (
-          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">
-            পাসওয়ার্ড ভুলে গেলে: নতুন শিক্ষক অ্যাকাউন্ট (নতুন আইডি) তৈরি করে ক্লাসের দায়িত্ব সেখানে দিন, তারপর এই অ্যাকাউন্ট নিষ্ক্রিয় করুন। ক্লাসের সব তথ্য ঠিক থাকবে।
-          </p>
-        )}
-        {newPw && <LoginInfo info={{ ...t, password: newPw, className: cls?.name }} />}
-        <Button variant={t.active === false ? 'soft-success' : 'soft-danger'} icon={Power} block onClick={toggleActive}>
+        <p className="px-1 text-[12.5px] text-slate-500">পাসওয়ার্ড ভুলে গেলে "নতুন পাসওয়ার্ড তৈরি করুন" — আইডি একই থাকবে।</p>
+        <Button variant={t.active === false ? 'soft-success' : 'secondary'} icon={Power} block disabled={busy} onClick={toggleActive}>
           {t.active === false ? 'অ্যাকাউন্ট চালু করুন' : 'অ্যাকাউন্ট নিষ্ক্রিয় করুন'}
+        </Button>
+        <Button variant="soft-danger" icon={Trash2} block disabled={busy} onClick={remove}>
+          অ্যাকাউন্ট মুছে ফেলুন
         </Button>
       </section>
     </div>

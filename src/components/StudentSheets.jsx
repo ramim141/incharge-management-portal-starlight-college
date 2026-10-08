@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import {
   Phone, Pencil, Wallet, Trash2, UserRound, MapPin, CalendarDays, KeyRound, Hash, Users, Eye, EyeOff, ReceiptText,
-  ChevronRight,
+  ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
-import { feeStartLabel } from '../lib/classLogic';
+import { feeStartLabel, randomPin } from '../lib/classLogic';
 import {
   taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
@@ -27,7 +27,7 @@ export function StudentDetailSheet() {
 
 function StudentDetail({ student: s }) {
   const {
-    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth,
+    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth, updateStudent,
   } = useApp();
   const { openPayment, openStudentForm, openWhatsApp, openReceipt, openFine, confirm, toast, closeStudent } = useUI();
   const [tab, setTab] = useState('fees');
@@ -64,6 +64,22 @@ function StudentDetail({ student: s }) {
     await deleteStudent(s.id);
     closeStudent();
     toast('শিক্ষার্থী মুছে ফেলা হয়েছে');
+  };
+
+  // Forgotten / shared PIN: a fresh one; the old PIN stops working for the portal at once
+  const newPin = async () => {
+    const ok = await confirm({
+      title: 'নতুন পিন তৈরি করবেন?',
+      message: `${s.name}-এর আগের পিন দিয়ে আর পোর্টালে ঢোকা যাবে না। নতুন পিন শিক্ষার্থী/অভিভাবককে জানাতে হবে।`,
+      confirmText: 'নতুন পিন',
+      icon: KeyRound,
+    });
+    if (!ok) return;
+    let pin = randomPin();
+    while (pin === String(s.pin)) pin = randomPin();
+    await updateStudent(s.id, { pin });
+    setShowPin(true);
+    toast(`নতুন পিন: ${pin}`);
   };
 
   const actions = [
@@ -285,6 +301,9 @@ function StudentDetail({ student: s }) {
               <button type="button" onClick={() => setShowPin((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100" aria-label="পিন দেখুন">
                 {showPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
+              <Button variant="secondary" size="xs" icon={RefreshCw} onClick={newPin}>
+                নতুন পিন
+              </Button>
             </div>
           </div>
           {s.guardianPhone && (
