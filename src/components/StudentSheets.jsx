@@ -27,7 +27,7 @@ export function StudentDetailSheet() {
 
 function StudentDetail({ student: s }) {
   const {
-    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor,
+    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth,
   } = useApp();
   const { openPayment, openStudentForm, openWhatsApp, openReceipt, openFine, confirm, toast, closeStudent } = useUI();
   const [tab, setTab] = useState('fees');
@@ -38,7 +38,8 @@ function StudentDetail({ student: s }) {
   const sFees = useMemo(
     () =>
       fees
-        .filter((f) => f.studentId === s.id)
+        // Months before the fee start were taken with admission — not listed, one note instead
+        .filter((f) => f.studentId === s.id && !f.beforeStart)
         .sort((a, b) => a.year - b.year || ACADEMIC_MONTHS.indexOf(a.month) - ACADEMIC_MONTHS.indexOf(b.month)),
     [fees, s.id],
   );
@@ -147,7 +148,8 @@ function StudentDetail({ student: s }) {
       {tab === 'fees' && (
         <div className="mt-4 space-y-5">
           <Group title="মাসিক বেতন">
-            {sFees.length === 0 && <Empty text="কোনো রেকর্ড নেই" />}
+            {feeStartMonth && <p className="py-2.5 text-[13px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে</p>}
+            {sFees.length === 0 && <Empty text={feeStartMonth ? `${feeStartLabel(feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'} />}
             {sFees.map((f) => {
               const st = feeStatus(f);
               return (

@@ -37,8 +37,9 @@ function PaymentBody({ initialStudent }) {
       const row = own.find((f) => f.month === m && Number(f.year) === y);
       // Months before admission are not owed (unless a fee row was made for them anyway)
       if (!row && admitted && `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}` < admitted) return null;
-      // Taken with admission (before the class's fee start month): shown, never collected
+      // Taken with admission (before the class's fee start month): not listed, never collected
       const beforeStart = isBeforeStart(m, y);
+      if (beforeStart) return null;
       return {
         key: keyOf(m, y), month: m, year: y, row, beforeStart,
         due: beforeStart ? 0 : row ? Number(row.due || 0) : rate,

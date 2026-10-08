@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { AppContext, useApp, normalizeFine, studentIdFor } from '../context/AppContext';
 import { CLASS_INDEX_PATH } from '../lib/classIndex';
+import { feeStartLabel } from '../lib/classLogic';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
@@ -311,7 +312,8 @@ function StudentProfile({ student: s, onExit }) {
   const sFees = useMemo(
     () =>
       fees
-        .filter((f) => f.studentId === s.id)
+        // Months before the class's fee start were taken with admission — one note instead of rows
+        .filter((f) => f.studentId === s.id && !f.beforeStart)
         .sort((a, b) => a.year - b.year || ACADEMIC_MONTHS.indexOf(a.month) - ACADEMIC_MONTHS.indexOf(b.month)),
     [fees, s.id],
   );
@@ -465,6 +467,11 @@ function StudentProfile({ student: s, onExit }) {
             <>
               <Card className="p-5">
                 <p className="mb-2 text-[16px] font-bold text-ink">মাসিক বেতন</p>
+                {settings.feeStartMonth && (
+                  <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">
+                    ✓ {feeStartLabel(settings.feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে
+                  </p>
+                )}
                 <ol className="relative">
                   {sFees.map((f, i) => {
                     const paid = feeStatus(f) === 'Paid';
@@ -496,7 +503,9 @@ function StudentProfile({ student: s, onExit }) {
                       </li>
                     );
                   })}
-                  {sFees.length === 0 && <p className="text-[14px] text-slate-400">কোনো রেকর্ড নেই</p>}
+                  {sFees.length === 0 && (
+                    <p className="text-[14px] text-slate-400">{settings.feeStartMonth ? `${feeStartLabel(settings.feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'}</p>
+                  )}
                 </ol>
               </Card>
 

@@ -38,6 +38,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
       inchargeName: settings.inchargeName || '',
       inchargePhone: settings.inchargePhone || '',
       defaultFeeDeadlineDay: settings.defaultFeeDeadlineDay,
+      feeStartMonth: settings.feeStartMonth || '',
     },
     fees: fees
       .filter((f) => f.studentId === s.id)

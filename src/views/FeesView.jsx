@@ -22,7 +22,10 @@ export const FeesView = () => {
   const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
   const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
 
-  const [month, setMonth] = useState(settings.currentMonth);
+  // Months before the fee start were taken with admission — the picker starts at the start month
+  const monthOptions = ACADEMIC_MONTHS.filter((m) => !isBeforeStart(m, yearOf(m)));
+  const pickable = monthOptions.length ? monthOptions : ACADEMIC_MONTHS;
+  const [month, setMonth] = useState(() => (pickable.includes(settings.currentMonth) ? settings.currentMonth : pickable[0]));
   const [filters, setFilters] = useState({ status: 'All' });
   const { status } = filters;
   const [q, setQ] = useState('');
@@ -102,7 +105,7 @@ export const FeesView = () => {
         subtitle={`${monthBn(month)} ${year} · শেষ তারিখ ${settings.defaultFeeDeadlineDay} ${monthBn(month)}`}
         actions={<IconButton icon={Zap} label="স্বয়ংক্রিয় জরিমানা" onClick={runAutoFine} />}
       >
-        <SelectPill label="মাস" value={month} onChange={setMonth} options={ACADEMIC_MONTHS.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
+        <SelectPill label="মাস" value={month} onChange={setMonth} options={pickable.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
       </PageHeader>
 
       {beforeStart && (
