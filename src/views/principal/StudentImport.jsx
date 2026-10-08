@@ -183,8 +183,8 @@ function ListImport({ classes, onDone }) {
       <div className="rounded-2xl bg-brand-50/70 p-4 text-[13.5px] leading-relaxed text-brand-900">
         <p className="font-bold">যেভাবে দেবেন</p>
         <p>
-          প্রথম লাইনে কলামের নাম, তারপর প্রতি লাইনে একজন শিক্ষার্থী। <b>রোল</b> ও <b>নাম</b> লাগবেই; <b>ক্লাস</b> কলামে ক্লাস কোড (যেমন {classes[0]?.id || 'XI-2026'}) দিলে
-          প্রত্যেকে নিজের ক্লাসে যাবে। বাকি কলাম ঐচ্ছিক: বিভাগ, শাখা, লিঙ্গ, পিতা, মাতা, মোবাইল, ঠিকানা, বেতন, পিন।
+          প্রথম লাইনে কলামের নাম, তারপর প্রতি লাইনে একজন শিক্ষার্থী। <b>রোল</b>, <b>নাম</b> (বাংলায়) ও <b>nameEn</b> (ইংরেজিতে নাম) দিন; <b>ক্লাস</b> কলামে ক্লাস কোড
+          (যেমন {classes[0]?.id || 'XI-2026'}) দিলে প্রত্যেকে নিজের ক্লাসে যাবে। বাকি কলাম ঐচ্ছিক: বিভাগ, শাখা, লিঙ্গ, পিতা, মাতা, মোবাইল, ঠিকানা, বেতন, পিন।
         </p>
       </div>
 
@@ -257,7 +257,7 @@ const selectCls =
   'h-12 w-full rounded-2xl bg-slate-50 px-4 text-[16px] font-medium text-ink outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-500';
 
 const blankForm = (classCode) => ({
-  classCode, roll: '', name: '', group: '', section: '', gender: '', phone: '', father: '', mother: '', address: '', pin: '',
+  classCode, roll: '', name: '', nameEn: '', group: '', section: '', gender: '', phone: '', father: '', mother: '', address: '', pin: '',
 });
 
 /** One student at a time; goes through the same checks and records as the list import */
@@ -283,12 +283,14 @@ function SingleStudentForm({ classes }) {
 
   const save = async () => {
     if (!cls) return setErr('ক্লাস বাছুন');
-    if (!f.roll || !f.name.trim()) return setErr('রোল ও নাম দিন');
+    if (!f.roll) return setErr('রোল দিন');
+    if (!f.name.trim()) return setErr('বাংলায় নাম দিন');
+    if (!f.nameEn.trim()) return setErr('ইংরেজিতে নাম দিন (Name in English)');
     setBusy(true);
     try {
       const existing = { [cls.id]: await backend.getCollection(['classes', cls.id, 'students']) };
-      const header = ['class', 'roll', 'name', 'department', 'section', 'gender', 'phone', 'father', 'mother', 'address', 'pin'];
-      const row = [cls.id, f.roll, f.name, f.group, f.section, f.gender, f.phone, f.father, f.mother, f.address, f.pin];
+      const header = ['class', 'roll', 'name', 'nameEn', 'department', 'section', 'gender', 'phone', 'father', 'mother', 'address', 'pin'];
+      const row = [cls.id, f.roll, f.name, f.nameEn, f.group, f.section, f.gender, f.phone, f.father, f.mother, f.address, f.pin];
       const { plan, errors } = planImport([header, row], { classes, existing, defaultClass: cls.id });
       if (errors.length) throw Object.assign(new Error(errors[0].msg), { code: 'form' });
       if (plan[0]?.skipped.length) throw Object.assign(new Error(`রোল ${f.roll} এই ক্লাসে আগে থেকেই আছে`), { code: 'form' });
@@ -337,14 +339,15 @@ function SingleStudentForm({ classes }) {
         </select>
       </Field>
 
-      <div className="grid grid-cols-[120px_1fr] gap-3">
-        <Field label="রোল *">
-          <Input inputMode="numeric" value={f.roll} onChange={(e) => set('roll')(e.target.value.replace(/[^0-9০-৯]/g, ''))} placeholder="101" className="tabular" />
-        </Field>
-        <Field label="নাম *">
-          <Input value={f.name} onChange={set('name')} placeholder="শিক্ষার্থীর নাম" />
-        </Field>
-      </div>
+      <Field label="রোল *">
+        <Input inputMode="numeric" value={f.roll} onChange={(e) => set('roll')(e.target.value.replace(/[^0-9০-৯]/g, ''))} placeholder="101" className="tabular" />
+      </Field>
+      <Field label="নাম (বাংলায়) *">
+        <Input value={f.name} onChange={set('name')} placeholder="যেমন মো: রহিম আহমেদ" />
+      </Field>
+      <Field label="Name (English) *">
+        <Input value={f.nameEn} onChange={set('nameEn')} placeholder="e.g. Md. Rahim Ahmed" autoCapitalize="words" />
+      </Field>
 
       {departments.length > 0 && (
         <Field label="বিভাগ">
