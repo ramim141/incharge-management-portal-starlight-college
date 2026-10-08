@@ -221,7 +221,11 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     return { added, removed };
   };
 
-  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, fineId = null, fineIds = null, examFeeId = null }) => {
+  /**
+   * feeMonths: [{ month, year }] the in-charge picked (any month: arrears, current or advance).
+   * Money goes to them oldest first; a month without a fee row yet gets one created.
+   */
+  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, feeMonths = null, fineId = null, fineIds = null, examFeeId = null }) => {
     const last = payments.reduce((m, p) => Math.max(m, Number(String(p.receiptNo).split('-').pop()) || 0), 100);
     const payment = {
       id: newId('pay'),
@@ -260,12 +264,30 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       const paid = f.paid + pay;
       ops.push({ type: 'merge', path: P('fines', f.id), data: { paid, status: f.amount - f.waived - paid > 0 ? 'Active' : 'Paid', paidAt: paymentDate } });
     });
-    const fee = feeId && fees.find((f) => f.id === feeId);
-    if (fee && left > 0) {
-      const paid = fee.paid + left;
-      const due = Math.max(0, fee.amount + fee.fine - paid);
-      ops.push({ type: 'merge', path: P('fees', fee.id), data: { paid, due, status: due === 0 ? 'Paid' : 'Partial' } });
+    // Monthly fees: oldest month first; whatever is left after the last month stays on it (advance)
+    const student = students.find((s) => s.id === studentId);
+    const monthRows = (feeMonths || [])
+      .map(({ month, year }) => {
+        const existing = fees.find((f) => f.studentId === studentId && f.month === month && Number(f.year) === Number(year));
+        if (existing) return existing;
+        const row = feeRow(student || { id: studentId, roll }, month, Number(year));
+        ops.push({ type: 'set', path: P('fees', row.id), data: row });
+        return row;
+      })
+      .sort((a, b) => Number(a.year) - Number(b.year) || EN_MONTHS.indexOf(a.month) - EN_MONTHS.indexOf(b.month));
+    if (!monthRows.length && feeId) {
+      const one = fees.find((f) => f.id === feeId);
+      if (one) monthRows.push(one);
     }
+    monthRows.forEach((fee, i) => {
+      if (left <= 0) return;
+      const owed = Math.max(0, Number(fee.amount) + Number(fee.fine || 0) - Number(fee.paid || 0));
+      const pay = i === monthRows.length - 1 ? left : Math.min(left, owed);
+      left -= pay;
+      const paid = Number(fee.paid || 0) + pay;
+      const due = Math.max(0, Number(fee.amount) + Number(fee.fine || 0) - paid);
+      ops.push({ type: 'merge', path: P('fees', fee.id), data: { paid, due, status: due === 0 ? 'Paid' : 'Partial' } });
+    });
     await write(ops);
     return payment;
   };

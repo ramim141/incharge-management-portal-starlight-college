@@ -3,7 +3,7 @@ import { ArrowLeftRight, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, SearchBar, RollBadge, Badge, Button, Field, Input, Checkbox, EmptyState, cx } from './ui';
-import { taka, monthBn, studentTags, METHODS, todayISO } from '../lib/format';
+import { taka, monthBn, studentTags, METHODS, todayISO, ACADEMIC_MONTHS, EN_MONTHS, feeStatus } from '../lib/format';
 
 export function PaymentSheet() {
   const { payment, closePayment } = useUI();
@@ -23,40 +23,81 @@ function PaymentBody({ initialStudent }) {
 
   const ctx = useMemo(() => {
     if (!student) return null;
-    const currentFee = fees.find((f) => f.studentId === student.id && f.month === settings.currentMonth);
+    // Whole academic session (July → June) + any older month still unpaid: the in-charge picks
+    // arrears, the current month or months in advance — several at once if needed
+    const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
+    const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
+    const curIdx = ACADEMIC_MONTHS.indexOf(settings.currentMonth);
+    const own = fees.filter((f) => f.studentId === student.id);
+    const rate = Number(student.monthlyFee || settings.defaultMonthlyFee);
+    const keyOf = (m, y) => `${y}-${m}`;
+    const admitted = String(student.admissionDate || '').slice(0, 7); // "2026-10"
+    const session = ACADEMIC_MONTHS.map((m, i) => {
+      const y = yearOf(m);
+      const row = own.find((f) => f.month === m && Number(f.year) === y);
+      // Months before admission are not owed (unless a fee row was made for them anyway)
+      if (!row && admitted && `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}` < admitted) return null;
+      return {
+        key: keyOf(m, y), month: m, year: y, row,
+        due: row ? Number(row.due || 0) : rate,
+        paid: row ? feeStatus(row) === 'Paid' : false,
+        future: i > curIdx,
+        past: i < curIdx,
+        current: i === curIdx,
+      };
+    }).filter(Boolean);
+    const older = own
+      .filter((f) => Number(f.due) > 0 && !session.some((x) => x.month === f.month && x.year === Number(f.year)))
+      .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), paid: false, past: true }));
     const activeFines = fines.filter((fn) => fn.studentId === student.id && fn.due > 0);
     const dueExam = examFees.find((e) => e.studentId === student.id && e.status === 'Due');
     return {
-      currentFee,
+      months: [...older, ...session],
       activeFines,
       dueExam,
-      // No fee row yet for this month -> nothing to settle against (create the month's fees first)
-      monthly: currentFee ? Number(currentFee.due || 0) : 0,
       fine: activeFines.reduce((a, fn) => a + fn.due, 0),
       exam: dueExam ? Number(dueExam.due || dueExam.amount) : 0,
     };
-  }, [student, fees, fines, examFees, settings.currentMonth]);
+  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee]);
 
-  const [sel, setSel] = useState(() => ({ monthly: true, fine: true, exam: false }));
+  // Starts on this month (if unpaid); the in-charge adds or removes months
+  const defaultMonths = (c) => new Set((c?.months || []).filter((m) => m.current && !m.paid && m.due > 0).map((m) => m.key));
+  const [months, setMonths] = useState(() => defaultMonths(ctx));
+  const [sel, setSel] = useState(() => ({ fine: true, exam: false }));
   const [amount, setAmount] = useState(null); // null = follow selection
   const [method, setMethod] = useState('Cash');
   const [trxId, setTrxId] = useState('');
   const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
 
-  const autoTotal = ctx
-    ? (sel.monthly ? ctx.monthly : 0) + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0)
-    : 0;
+  const chosen = ctx && months ? ctx.months.filter((m) => months.has(m.key)) : [];
+  const monthly = chosen.reduce((a, m) => a + m.due, 0);
+  const autoTotal = ctx ? monthly + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0) : 0;
   const total = amount ?? autoTotal;
 
   const pick = (s) => {
     setStudent(s);
-    setSel({ monthly: true, fine: true, exam: false });
+    setMonths(null); // filled from the new student's months below
+    setSel({ fine: true, exam: false });
     setAmount(null);
   };
+  if (ctx && months === null) setMonths(defaultMonths(ctx));
 
   const toggle = (k) => {
     setSel((p) => ({ ...p, [k]: !p[k] }));
+    setAmount(null);
+  };
+  const toggleMonth = (key) => {
+    setMonths((prev) => {
+      const n = new Set(prev || []);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+    setAmount(null);
+  };
+  const allUnpaid = () => {
+    setMonths(new Set(ctx.months.filter((m) => !m.paid && !m.future && m.due > 0).map((m) => m.key)));
     setAmount(null);
   };
 
@@ -64,13 +105,14 @@ function PaymentBody({ initialStudent }) {
     if (!student || total <= 0 || saving) return;
     setSaving(true);
     const items = [];
-    if (sel.monthly && ctx.monthly > 0) items.push({ description: `${settings.currentMonth} ${settings.currentYear} Monthly Fee`, amount: ctx.monthly });
+    chosen.forEach((m) => m.due > 0 && items.push({ description: `${m.month} ${m.year} Monthly Fee`, amount: m.due }));
     if (sel.fine && ctx.fine > 0) items.push({ description: `Fine (${ctx.activeFines.length})`, amount: ctx.fine });
     if (sel.exam && ctx.exam > 0) items.push({ description: ctx.dueExam?.examName || 'Examination Fee', amount: ctx.exam });
     if (items.length === 0 || amount != null) {
       // Custom amount: record it as a single line so the receipt total stays honest
       items.length = 0;
-      items.push({ description: sel.monthly ? `${settings.currentMonth} ${settings.currentYear} Monthly Fee` : 'College Fee Payment', amount: total });
+      const label = chosen.map((m) => `${m.month.slice(0, 3)} ${m.year}`).join(', ');
+      items.push({ description: chosen.length ? `Monthly Fee (${label})` : 'College Fee Payment', amount: total });
     }
     const [y, m, d] = date.split('-').map(Number);
     const now = new Date();
@@ -85,7 +127,7 @@ function PaymentBody({ initialStudent }) {
       method,
       trxId: method === 'Cash' ? '' : trxId,
       paymentDate: paidAt.toISOString(),
-      feeId: sel.monthly && ctx.currentFee ? ctx.currentFee.id : null,
+      feeMonths: chosen.map(({ month, year }) => ({ month, year })),
       fineIds: sel.fine ? ctx.activeFines.map((fn) => fn.id) : null,
       examFeeId: sel.exam && ctx.dueExam ? ctx.dueExam.id : null,
     });
@@ -140,7 +182,6 @@ function PaymentBody({ initialStudent }) {
 
   const totalDue = calculateStudentTotalDue(student.id);
   const items = [
-    { k: 'monthly', label: `${monthBn(settings.currentMonth)} মাসের বেতন${ctx.currentFee?.fine ? ' (জরিমানাসহ)' : ''}`, amt: ctx.monthly },
     { k: 'fine', label: ctx.activeFines.length > 1 ? `জরিমানা (${ctx.activeFines.length}টি)` : 'জরিমানা', amt: ctx.fine },
     { k: 'exam', label: ctx.dueExam?.examName || 'পরীক্ষার ফি', amt: ctx.exam },
   ];
@@ -163,7 +204,52 @@ function PaymentBody({ initialStudent }) {
       </div>
 
       <div>
-        <p className="mb-2 text-[13.5px] font-semibold text-slate-700">কিসের জন্য টাকা নিচ্ছেন</p>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[13.5px] font-semibold text-slate-700">কোন মাসের বেতন</p>
+          {ctx.months.some((m) => !m.paid && !m.future && m.due > 0) && (
+            <button type="button" onClick={allUnpaid} className="text-[13px] font-semibold text-brand-600">
+              সব বাকি মাস
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {ctx.months.map((m) => {
+            const on = !!months?.has(m.key);
+            return (
+              <button
+                key={m.key}
+                type="button"
+                disabled={m.paid}
+                onClick={() => toggleMonth(m.key)}
+                className={cx(
+                  'press relative rounded-2xl px-2 py-2.5 text-center ring-1 ring-inset transition',
+                  on ? 'bg-brand-600 text-white ring-brand-600' : m.paid ? 'bg-emerald-50/70 ring-emerald-100' : 'bg-white ring-slate-200',
+                )}
+              >
+                <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>{monthBn(m.month)}</span>
+                <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
+                  {m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
+                </span>
+                {!m.paid && !on && m.row && (m.past || m.current || Number(m.row.paid) > 0) && (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+                )}
+                {!m.paid && (() => {
+                  const partial = Number(m.row?.paid) > 0;
+                  const [text, tone] = partial ? ['আংশিক বাকি', 'text-rose-600'] : m.current ? ['এই মাস', 'text-brand-600'] : m.future ? ['অগ্রিম', 'text-amber-600'] : [null];
+                  return text && <span className={cx('block text-[10.5px] font-semibold', on ? 'text-white/80' : tone)}>{text}</span>;
+                })()}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[12px] text-slate-500">
+          {chosen.length ? `${chosen.length} মাস · ${taka(monthly)}` : 'কোনো মাস বাছা হয়নি'} · লাল বিন্দু = বকেয়া
+          {ctx.months.some((m) => m.row?.fine) ? ' · * জরিমানাসহ' : ''}
+        </p>
+      </div>
+
+      <div>
+        <p className="mb-2 text-[13.5px] font-semibold text-slate-700">অন্যান্য</p>
         <div className="space-y-2">
           {items.map((it) => {
             const disabled = it.amt <= 0;
