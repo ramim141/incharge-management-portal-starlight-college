@@ -16,7 +16,7 @@ export function PaymentSheet() {
 }
 
 function PaymentBody({ initialStudent }) {
-  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart, feeMonths, feeStartMonth } = useApp();
+  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart, feeMonths, feeStartMonth, waiveStudentFines } = useApp();
   const { closePayment, openReceipt, toast } = useUI();
 
   const [student, setStudent] = useState(initialStudent);
@@ -52,7 +52,10 @@ function PaymentBody({ initialStudent }) {
       .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), paid: false, past: true }));
     const activeFines = fines.filter((fn) => fn.studentId === student.id && fn.due > 0);
     const dueExam = examFees.find((e) => e.studentId === student.id && e.status === 'Due');
+    // Everything that can be waived: separate fines + late fines still owed on monthly fees
+    const lateFines = own.filter((f) => !f.beforeStart && Number(f.fine) > 0).reduce((a, f) => a + Math.min(f.fine - (f.fineWaived || 0), f.due), 0);
     return {
+      waivable: activeFines.reduce((a, fn) => a + fn.due, 0) + lateFines,
       months: [...older, ...session],
       activeFines,
       dueExam,
@@ -70,6 +73,17 @@ function PaymentBody({ initialStudent }) {
   const [trxId, setTrxId] = useState('');
   const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveAmt, setWaiveAmt] = useState('');
+  const applyWaiver = async () => {
+    const n = Math.min(Number(waiveAmt) || 0, ctx.waivable);
+    if (n <= 0) return;
+    const w = await waiveStudentFines(student.id, n, 'আদায়ের সময় মওকুফ');
+    toast(`${taka(w)} জরিমানা মওকুফ হয়েছে`);
+    setWaiveAmt('');
+    setWaiveOpen(false);
+    setAmount(null); // totals follow the reduced fines
+  };
 
   const chosen = ctx && months ? ctx.months.filter((m) => months.has(m.key)) : [];
   // Same month twice in the list (e.g. Jan 2026 and Jan 2027) → show the year on those buttons
@@ -281,6 +295,38 @@ function PaymentBody({ initialStudent }) {
             );
           })}
         </div>
+
+        {ctx.waivable > 0 && (
+          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
+            {!waiveOpen ? (
+              <button type="button" onClick={() => setWaiveOpen(true)} className="flex w-full items-center justify-between text-left">
+                <span className="text-[14px] font-semibold text-brand-700">জরিমানা মওকুফ করুন</span>
+                <span className="tabular text-[12.5px] text-slate-500">মোট জরিমানা {taka(ctx.waivable)}</span>
+              </button>
+            ) : (
+              <div className="space-y-2.5">
+                <p className="text-[13px] text-slate-600">
+                  কত টাকা মাফ? (মোট জরিমানা <b className="tabular">{taka(ctx.waivable)}</b> — পুরোনোটি থেকে আগে বাদ যাবে)
+                </p>
+                <div className="flex gap-2">
+                  <Input type="number" inputMode="numeric" min={0} value={waiveAmt} onChange={(e) => setWaiveAmt(e.target.value)} placeholder="যেমন 50" autoFocus />
+                  <Button variant="secondary" className="shrink-0" onClick={() => setWaiveAmt(String(ctx.waivable))}>
+                    সব
+                  </Button>
+                </div>
+                {Number(waiveAmt) > ctx.waivable && <p className="text-[12.5px] font-medium text-rose-600">সর্বোচ্চ {taka(ctx.waivable)}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => (setWaiveOpen(false), setWaiveAmt(''))}>
+                    বাতিল
+                  </Button>
+                  <Button size="sm" disabled={!(Number(waiveAmt) > 0) || Number(waiveAmt) > ctx.waivable} onClick={applyWaiver}>
+                    মওকুফ করুন
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-3xl bg-ink p-5 text-white">
