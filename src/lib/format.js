@@ -9,6 +9,8 @@ export const BN_MONTHS = [
   'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
 ];
 export const BN_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+export const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
+export const toEnDigits = (s) => String(s ?? '').replace(/[০-৯]/g, (d) => BN_DIGITS.indexOf(d));
 
 // Academic session runs July → June
 export const ACADEMIC_MONTHS = [
@@ -101,6 +103,9 @@ export const FEE_STATUS = {
   Due: { bn: 'বাকি', tone: 'amber' },
   Overdue: { bn: 'মেয়াদোত্তীর্ণ', tone: 'red' },
 };
+
+/** Badge for a fee row: months before the class's fee start read "ভর্তির সময়" (taken with admission) */
+export const feeBadge = (f, st) => (f?.beforeStart ? { bn: 'ভর্তির সময় নেওয়া', tone: 'green' } : FEE_STATUS[st] || FEE_STATUS.Due);
 
 export const FINE_STATUS = {
   Active: { bn: 'বাকি', tone: 'red' },

@@ -3,7 +3,8 @@ import { ArrowLeftRight, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, SearchBar, RollBadge, Badge, Button, Field, Input, Checkbox, EmptyState, cx } from './ui';
-import { taka, monthBn, studentTags, METHODS, todayISO, ACADEMIC_MONTHS, EN_MONTHS, feeStatus } from '../lib/format';
+import { taka, monthBn, studentTags, METHODS, todayISO, feeStatus } from '../lib/format';
+import { periodOf } from '../lib/classLogic';
 
 export function PaymentSheet() {
   const { payment, closePayment } = useUI();
@@ -15,7 +16,7 @@ export function PaymentSheet() {
 }
 
 function PaymentBody({ initialStudent }) {
-  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue } = useApp();
+  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart, feeMonths, feeStartMonth, waiveStudentFines } = useApp();
   const { closePayment, openReceipt, toast } = useUI();
 
   const [student, setStudent] = useState(initialStudent);
@@ -23,42 +24,45 @@ function PaymentBody({ initialStudent }) {
 
   const ctx = useMemo(() => {
     if (!student) return null;
-    // Whole academic session (July → June) + any older month still unpaid: the in-charge picks
-    // arrears, the current month or months in advance — several at once if needed
-    const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
-    const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
-    const curIdx = ACADEMIC_MONTHS.indexOf(settings.currentMonth);
+    // The class's fee months (fee start → end of session; e.g. Jan 2026 onwards for a class with
+    // arrears) + any other month still unpaid: the in-charge picks arrears, this month or advance
+    const curPeriod = periodOf(settings.currentMonth, settings.currentYear);
     const own = fees.filter((f) => f.studentId === student.id);
     const rate = Number(student.monthlyFee || settings.defaultMonthlyFee);
     const keyOf = (m, y) => `${y}-${m}`;
-    const admitted = String(student.admissionDate || '').slice(0, 7); // "2026-10"
-    const session = ACADEMIC_MONTHS.map((m, i) => {
-      const y = yearOf(m);
-      const row = own.find((f) => f.month === m && Number(f.year) === y);
-      // Months before admission are not owed (unless a fee row was made for them anyway)
-      if (!row && admitted && `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}` < admitted) return null;
-      return {
-        key: keyOf(m, y), month: m, year: y, row,
-        due: row ? Number(row.due || 0) : rate,
-        paid: row ? feeStatus(row) === 'Paid' : false,
-        future: i > curIdx,
-        past: i < curIdx,
-        current: i === curIdx,
-      };
-    }).filter(Boolean);
+    // Without a class fee start month, months before the student's admission are not owed
+    const admitted = feeStartMonth ? '' : String(student.admissionDate || '').slice(0, 7);
+    const session = feeMonths
+      .map(({ month: m, year: y, period }) => {
+        const row = own.find((f) => f.month === m && Number(f.year) === y);
+        if (!row && admitted && period < admitted) return null;
+        if (isBeforeStart(m, y)) return null;
+        return {
+          key: keyOf(m, y), month: m, year: y, row,
+          due: row ? Number(row.due || 0) : rate,
+          paid: row ? feeStatus(row) === 'Paid' : false,
+          future: period > curPeriod,
+          past: period < curPeriod,
+          current: period === curPeriod,
+        };
+      })
+      .filter(Boolean);
     const older = own
       .filter((f) => Number(f.due) > 0 && !session.some((x) => x.month === f.month && x.year === Number(f.year)))
       .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), paid: false, past: true }));
     const activeFines = fines.filter((fn) => fn.studentId === student.id && fn.due > 0);
     const dueExam = examFees.find((e) => e.studentId === student.id && e.status === 'Due');
+    // Everything that can be waived: separate fines + late fines still owed on monthly fees
+    const lateFines = own.filter((f) => !f.beforeStart && Number(f.fine) > 0).reduce((a, f) => a + Math.min(f.fine - (f.fineWaived || 0), f.due), 0);
     return {
+      waivable: activeFines.reduce((a, fn) => a + fn.due, 0) + lateFines,
       months: [...older, ...session],
       activeFines,
       dueExam,
       fine: activeFines.reduce((a, fn) => a + fn.due, 0),
       exam: dueExam ? Number(dueExam.due || dueExam.amount) : 0,
     };
-  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee]);
+  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee, feeMonths, feeStartMonth, isBeforeStart]);
 
   // Starts on this month (if unpaid); the in-charge adds or removes months
   const defaultMonths = (c) => new Set((c?.months || []).filter((m) => m.current && !m.paid && m.due > 0).map((m) => m.key));
@@ -69,8 +73,21 @@ function PaymentBody({ initialStudent }) {
   const [trxId, setTrxId] = useState('');
   const [date, setDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
+  const [waiveOpen, setWaiveOpen] = useState(false);
+  const [waiveAmt, setWaiveAmt] = useState('');
+  const applyWaiver = async () => {
+    const n = Math.min(Number(waiveAmt) || 0, ctx.waivable);
+    if (n <= 0) return;
+    const w = await waiveStudentFines(student.id, n, 'আদায়ের সময় মওকুফ');
+    toast(`${taka(w)} জরিমানা মওকুফ হয়েছে`);
+    setWaiveAmt('');
+    setWaiveOpen(false);
+    setAmount(null); // totals follow the reduced fines
+  };
 
   const chosen = ctx && months ? ctx.months.filter((m) => months.has(m.key)) : [];
+  // Same month twice in the list (e.g. Jan 2026 and Jan 2027) → show the year on those buttons
+  const repeated = new Set((ctx?.months || []).map((m) => m.month).filter((m, i, a) => a.indexOf(m) !== i));
   const monthly = chosen.reduce((a, m) => a + m.due, 0);
   const autoTotal = ctx ? monthly + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0) : 0;
   const total = amount ?? autoTotal;
@@ -226,9 +243,12 @@ function PaymentBody({ initialStudent }) {
                   on ? 'bg-brand-600 text-white ring-brand-600' : m.paid ? 'bg-emerald-50/70 ring-emerald-100' : 'bg-white ring-slate-200',
                 )}
               >
-                <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>{monthBn(m.month)}</span>
+                <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>
+                  {monthBn(m.month)}
+                  {repeated.has(m.month) && <span className="tabular text-[11.5px] font-semibold opacity-70"> {String(m.year).slice(2)}</span>}
+                </span>
                 <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
-                  {m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
+                  {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
                 </span>
                 {!m.paid && !on && m.row && (m.past || m.current || Number(m.row.paid) > 0) && (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />
@@ -275,6 +295,38 @@ function PaymentBody({ initialStudent }) {
             );
           })}
         </div>
+
+        {ctx.waivable > 0 && (
+          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
+            {!waiveOpen ? (
+              <button type="button" onClick={() => setWaiveOpen(true)} className="flex w-full items-center justify-between text-left">
+                <span className="text-[14px] font-semibold text-brand-700">জরিমানা মওকুফ করুন</span>
+                <span className="tabular text-[12.5px] text-slate-500">মোট জরিমানা {taka(ctx.waivable)}</span>
+              </button>
+            ) : (
+              <div className="space-y-2.5">
+                <p className="text-[13px] text-slate-600">
+                  কত টাকা মাফ? (মোট জরিমানা <b className="tabular">{taka(ctx.waivable)}</b> — পুরোনোটি থেকে আগে বাদ যাবে)
+                </p>
+                <div className="flex gap-2">
+                  <Input type="number" inputMode="numeric" min={0} value={waiveAmt} onChange={(e) => setWaiveAmt(e.target.value)} placeholder="যেমন 50" autoFocus />
+                  <Button variant="secondary" className="shrink-0" onClick={() => setWaiveAmt(String(ctx.waivable))}>
+                    সব
+                  </Button>
+                </div>
+                {Number(waiveAmt) > ctx.waivable && <p className="text-[12.5px] font-medium text-rose-600">সর্বোচ্চ {taka(ctx.waivable)}</p>}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => (setWaiveOpen(false), setWaiveAmt(''))}>
+                    বাতিল
+                  </Button>
+                  <Button size="sm" disabled={!(Number(waiveAmt) > 0) || Number(waiveAmt) > ctx.waivable} onClick={applyWaiver}>
+                    মওকুফ করুন
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-3xl bg-ink p-5 text-white">

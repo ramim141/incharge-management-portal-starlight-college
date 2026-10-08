@@ -4,11 +4,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
+import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, FeeStartSelect, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
 import { todayISO } from '../lib/format';
 
-const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name'];
-const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
+const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name', 'portal_link'];
+const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
 const pick = (o) => Object.fromEntries(EDITABLE.map((k) => [k, o[k] ?? '']));
 
 export const SettingsView = () => {
@@ -34,7 +34,9 @@ export const SettingsView = () => {
 
   const preview = (() => {
     const s = students[0];
-    if (!s) return form.whatsappTemplate;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const portalUrl = origin ? (s ? `${origin}?roll=${s.roll}` : origin) : '';
+    if (!s) return String(form.whatsappTemplate).replace(/\{portal_link\}/g, portalUrl);
     const fee = fees.find((f) => f.studentId === s.id && f.month === settings.currentMonth);
     return String(form.whatsappTemplate)
       .replace(/\{student_name\}/g, s.name)
@@ -45,7 +47,8 @@ export const SettingsView = () => {
       .replace(/\{incharge_name\}/g, form.inchargeName)
       .replace(/\{incharge_phone\}/g, form.inchargePhone)
       .replace(/\{class_name\}/g, settings.className)
-      .replace(/\{roll\}/g, s.roll);
+      .replace(/\{roll\}/g, s.roll)
+      .replace(/\{portal_link\}/g, portalUrl);
   })();
 
   const backup = () => {
@@ -133,6 +136,9 @@ export const SettingsView = () => {
               <Input type="number" inputMode="numeric" min={0} value={form.absentFine} onChange={set('absentFine', true)} />
             </Field>
           </div>
+          <Field label="বেতন শুরুর মাস" hint="এর আগের মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — সেগুলো বাকি দেখাবে না, আদায়ও করা যাবে না">
+            <FeeStartSelect value={form.feeStartMonth} onChange={(v) => setForm((x) => ({ ...x, feeStartMonth: v }))} />
+          </Field>
           <p className="text-[12.5px] text-slate-500">চলতি মাস তারিখ দেখে আপনাআপনি ঠিক হয়। নতুন মাসের বেতন "মাসিক বেতন" পাতা থেকে তৈরি করুন।</p>
           <p className="text-[12.5px] text-slate-500">
             হাজিরায় অনুপস্থিত দিলে প্রতিদিন এই জরিমানা হবে। কোনো শিক্ষার্থীর আলাদা হার দিতে তার তথ্য এডিট করুন; 0 দিলে অনুপস্থিতি জরিমানা বন্ধ থাকবে।

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Zap, MessageSquareText, Wallet, CreditCard } from 'lucide-react';
+import { Zap, MessageSquareText, Wallet, CreditCard, CheckCheck, Undo2 } from 'lucide-react';
+import { ADMISSION_NOTE, BEFORE_START_LABEL, periodOf } from '../lib/classLogic';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
-import { taka, monthBn, ACADEMIC_MONTHS, FEE_STATUS, feeStatus, daysLate, studentTags } from '../lib/format';
+import { taka, monthBn, EN_MONTHS, feeBadge, feeStatus, daysLate, studentTags } from '../lib/format';
 
 export const REASONS = [
   'আর্থিক সমস্যা',
@@ -15,19 +16,20 @@ export const REASONS = [
 ];
 
 export const FeesView = () => {
-  const { fees, students, settings, applyAutoFines, generateMonthFees } = useApp();
+  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth, feeMonths, generateArrears } = useApp();
   const { openPayment, confirm, toast } = useUI();
 
-  const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
-  const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
-
-  const [month, setMonth] = useState(settings.currentMonth);
+  // The class's fee months: from its fee start month (e.g. Jan 2026 for a class with arrears)
+  // through the end of the session; picked by period ("2026-11") since a month name can repeat
+  const curPeriod = periodOf(settings.currentMonth, settings.currentYear);
+  const [period, setPeriod] = useState(() => (feeMonths.some((m) => m.period === curPeriod) ? curPeriod : feeMonths[0]?.period || curPeriod));
+  const picked = feeMonths.find((m) => m.period === period) || { month: settings.currentMonth, year: settings.currentYear };
   const [filters, setFilters] = useState({ status: 'All' });
   const { status } = filters;
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null);
 
-  const year = yearOf(month);
+  const { month, year } = picked;
   const monthFees = fees.filter((f) => f.month.toLowerCase() === month.toLowerCase() && Number(f.year) === year);
   const withStudent = monthFees
     .map((f) => ({ f, s: students.find((x) => x.id === f.studentId || x.roll === Number(f.roll)), st: feeStatus(f) }))
@@ -40,7 +42,25 @@ export const FeesView = () => {
       (!t || String(f.roll).includes(t) || (s?.name || '').toLowerCase().includes(t) || (s?.nameEn || '').toLowerCase().includes(t)),
   );
 
-  const missing = students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
+  const beforeStart = isBeforeStart(month, year);
+  const missing = beforeStart ? 0 : students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
+  const startLabel = feeStartMonth ? `${monthBn(EN_MONTHS[Number(feeStartMonth.slice(5)) - 1])} ${feeStartMonth.slice(0, 4)}` : '';
+  // Months from the fee start up to now that some students have no fee row for yet
+  const arrearsMissing = feeMonths
+    .filter((m) => m.period <= curPeriod && !isBeforeStart(m.month, m.year))
+    .reduce((n, m) => n + students.filter((s) => s.status !== 'inactive' && !fees.some((f) => f.studentId === s.id && f.month === m.month && Number(f.year) === m.year)).length, 0);
+  const createArrears = async () => {
+    const ok = await confirm({
+      title: 'বাকি মাসগুলোর বেতন তৈরি করবেন?',
+      message: `${startLabel || 'শুরু'} থেকে ${monthBn(settings.currentMonth)} ${settings.currentYear} পর্যন্ত যাদের যে মাসের বেতন তৈরি হয়নি, সেগুলো বাকি হিসেবে তৈরি হবে (মোট ${arrearsMissing}টি)।`,
+      confirmText: 'তৈরি করুন',
+      icon: CreditCard,
+    });
+    if (!ok) return;
+    const n = await generateArrears();
+    toast(`${n}টি মাসের বেতন তৈরি হয়েছে`);
+  };
+
   const createMonth = async () => {
     const n = await generateMonthFees(month, year);
     toast(`${monthBn(month)} মাসের বেতন ${n} জনের জন্য তৈরি হয়েছে`);
@@ -49,6 +69,36 @@ export const FeesView = () => {
   const collected = monthFees.reduce((a, f) => a + Number(f.paid || 0), 0);
   const due = monthFees.reduce((a, f) => a + Number(f.due || 0), 0);
   const cnt = (k) => withStudent.filter(({ st }) => st === k || (k === 'Due' && st === 'Partial')).length;
+
+  const markAllPaid = async () => {
+    const pending = students.filter((s) => s.status !== 'inactive').filter((s) => {
+      const row = monthFees.find((f) => f.studentId === s.id);
+      return !row || Number(row.due) > 0;
+    }).length;
+    const ok = await confirm({
+      title: `${monthBn(month)} ${year}: সবাই পরিশোধিত?`,
+      message: `${pending} জনের ${monthBn(month)} মাসের বেতন "ভর্তির সময় আদায়" হিসেবে পরিশোধিত হবে। কোনো রশিদ তৈরি হবে না। কারো জন্য ভুল হলে পরে তার কার্ডে "বাকি করুন" চাপলেই ফেরত যাবে।`,
+      confirmText: 'পরিশোধিত করুন',
+      icon: CheckCheck,
+    });
+    if (!ok) return;
+    const n = await markMonthPaid(month, year);
+    toast(`${n} জনের ${monthBn(month)} মাসের বেতন পরিশোধিত হয়েছে`);
+  };
+
+  // Undo "collected at admission" for one student whose fee was in fact not taken
+  const undoAdmission = async (f, s) => {
+    const ok = await confirm({
+      title: 'বাকি হিসেবে ফেরত নেবেন?',
+      message: `${s?.name || `রোল ${f.roll}`} — ${monthBn(f.month)} মাসের বেতন আবার বাকি দেখাবে।`,
+      confirmText: 'বাকি করুন',
+      icon: Undo2,
+    });
+    if (!ok) return;
+    const owed = Number(f.amount) + Number(f.fine || 0);
+    await updateFee(f.id, { paid: 0, due: owed, status: 'Due', note: '', settledAt: null });
+    toast('আবার বাকি হিসেবে দেখাচ্ছে');
+  };
 
   const runAutoFine = async () => {
     const ok = await confirm({
@@ -69,8 +119,34 @@ export const FeesView = () => {
         subtitle={`${monthBn(month)} ${year} · শেষ তারিখ ${settings.defaultFeeDeadlineDay} ${monthBn(month)}`}
         actions={<IconButton icon={Zap} label="স্বয়ংক্রিয় জরিমানা" onClick={runAutoFine} />}
       >
-        <SelectPill label="মাস" value={month} onChange={setMonth} options={ACADEMIC_MONTHS.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
+        <SelectPill label="মাস" value={period} onChange={setPeriod} options={feeMonths.map((m) => ({ value: m.period, label: `${monthBn(m.month)} ${m.year}` }))} />
       </PageHeader>
+
+      {beforeStart && (
+        <div className="mb-3 flex items-center gap-3 rounded-3xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+          <CheckCheck className="h-6 w-6 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-bold text-emerald-900">
+              {monthBn(month)}: {BEFORE_START_LABEL}
+            </p>
+            <p className="text-[12.5px] text-emerald-800">মাসিক বেতন নেওয়া শুরু {startLabel} থেকে — এই মাসে কিছু আদায় করতে হবে না</p>
+          </div>
+        </div>
+      )}
+
+      {arrearsMissing > 0 && feeMonths.filter((m) => m.period <= curPeriod).length > 1 && (
+        <button type="button" onClick={createArrears} className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-amber-50 p-4 text-left ring-1 ring-amber-100">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-amber-500 text-white">
+            <CreditCard className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14.5px] font-bold text-ink">বাকি মাসগুলোর বেতন তৈরি করুন</span>
+            <span className="block text-[12.5px] text-slate-600">
+              {startLabel || 'শুরু'} থেকে এ পর্যন্ত {arrearsMissing}টি মাসের বেতন তৈরি হয়নি
+            </span>
+          </span>
+        </button>
+      )}
 
       {missing > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-3xl bg-brand-50 p-4 ring-1 ring-brand-100">
@@ -97,6 +173,20 @@ export const FeesView = () => {
           <p className="tabular mt-1 text-[22px] font-extrabold text-rose-600">{taka(due)}</p>
         </Card>
       </div>
+
+      {!beforeStart && (due > 0 || missing > 0) && (
+        <button
+          type="button"
+          onClick={markAllPaid}
+          className="press mt-3 flex w-full items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3 text-left ring-1 ring-emerald-100"
+        >
+          <CheckCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14.5px] font-bold text-emerald-900">সবাইকে পরিশোধিত করুন</span>
+            <span className="block text-[12.5px] text-emerald-800">{monthBn(month)}-এর বেতন ভর্তির সময় বা অন্যভাবে আগেই নেওয়া হয়ে থাকলে</span>
+          </span>
+        </button>
+      )}
 
       <div className="mt-4 flex gap-2">
         <SearchBar className="flex-1" value={q} onChange={setQ} placeholder="রোল বা নাম" />
@@ -136,8 +226,8 @@ export const FeesView = () => {
                       {late > 0 && <span className="font-semibold text-rose-600"> · {late} দিন দেরি</span>}
                     </p>
                   </div>
-                  <Badge tone={FEE_STATUS[st]?.tone} dot>
-                    {FEE_STATUS[st]?.bn}
+                  <Badge tone={feeBadge(f, st).tone} dot>
+                    {feeBadge(f, st).bn}
                   </Badge>
                 </div>
 
@@ -146,6 +236,19 @@ export const FeesView = () => {
                   <Amt label="জরিমানা" value={f.fine || 0} cls={f.fine ? 'text-amber-600' : ''} />
                   <Amt label="বাকি" value={f.due || 0} cls={Number(f.due) > 0 ? 'text-rose-600' : 'text-emerald-600'} />
                 </div>
+
+                {f.beforeStart && (
+                  <p className="mt-3 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {BEFORE_START_LABEL}</p>
+                )}
+
+                {!f.beforeStart && st === 'Paid' && f.note === ADMISSION_NOTE && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <p className="min-w-0 flex-1 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {ADMISSION_NOTE}</p>
+                    <Button size="sm" variant="secondary" icon={Undo2} onClick={() => undoAdmission(f, s)}>
+                      বাকি করুন
+                    </Button>
+                  </div>
+                )}
 
                 {st !== 'Paid' && (
                   <div className="mt-3 flex items-center gap-2">

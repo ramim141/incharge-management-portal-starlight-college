@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import {
   Phone, Pencil, Wallet, Trash2, UserRound, MapPin, CalendarDays, KeyRound, Hash, Users, Eye, EyeOff, ReceiptText,
-  ChevronRight,
+  ChevronRight, RefreshCw, Undo2, Copy,
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, cx } from './ui';
+import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
+import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
 import {
-  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
+  taka, monthBn, groupBn, fmtDate, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, EN_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
 
 /* ───────────────────────── Student profile (admin) ───────────────────────── */
@@ -26,24 +27,33 @@ export function StudentDetailSheet() {
 
 function StudentDetail({ student: s }) {
   const {
-    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor,
+    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth, updateStudent, profile,
   } = useApp();
   const { openPayment, openStudentForm, openWhatsApp, openReceipt, openFine, confirm, toast, closeStudent } = useUI();
   const [tab, setTab] = useState('fees');
   const [showPin, setShowPin] = useState(false);
+  const [waiving, setWaiving] = useState(false);
 
   const att = getStudentAttendanceStats(s.id);
   const due = calculateStudentTotalDue(s.id);
   const sFees = useMemo(
     () =>
       fees
-        .filter((f) => f.studentId === s.id)
-        .sort((a, b) => a.year - b.year || ACADEMIC_MONTHS.indexOf(a.month) - ACADEMIC_MONTHS.indexOf(b.month)),
+        // Months before the fee start were taken with admission — not listed, one note instead
+        .filter((f) => f.studentId === s.id && !f.beforeStart)
+        .sort((a, b) => Number(a.year) - Number(b.year) || EN_MONTHS.indexOf(a.month) - EN_MONTHS.indexOf(b.month)),
     [fees, s.id],
   );
   const sExams = examFees.filter((e) => e.studentId === s.id);
   const sFines = fines.filter((f) => f.studentId === s.id);
   const sPays = payments.filter((p) => p.studentId === s.id);
+  // All of this student's fines: separate fines (absence…) + late fines on monthly fees
+  const feeFines = sFees.filter((f) => Number(f.fine) > 0);
+  const fineSummary = {
+    total: sFines.reduce((a, f) => a + f.amount, 0) + feeFines.reduce((a, f) => a + f.fine, 0),
+    waived: sFines.reduce((a, f) => a + f.waived, 0) + feeFines.reduce((a, f) => a + (f.fineWaived || 0), 0),
+    due: sFines.reduce((a, f) => a + f.due, 0) + feeFines.reduce((a, f) => a + Math.min(f.fine - (f.fineWaived || 0), f.due), 0),
+  };
   const attLog = Object.keys(attendance)
     .filter((d) => attendance[d]?.[s.id])
     .sort()
@@ -62,6 +72,46 @@ function StudentDetail({ student: s }) {
     await deleteStudent(s.id);
     closeStudent();
     toast('শিক্ষার্থী মুছে ফেলা হয়েছে');
+  };
+
+  // Forgotten / shared PIN: a fresh one; the old PIN stops working for the portal at once
+  const newPin = async () => {
+    const ok = await confirm({
+      title: 'নতুন পিন তৈরি করবেন?',
+      message: `${s.name}-এর আগের পিন দিয়ে আর পোর্টালে ঢোকা যাবে না। নতুন পিন শিক্ষার্থী/অভিভাবককে জানাতে হবে।`,
+      confirmText: 'নতুন পিন',
+      icon: KeyRound,
+    });
+    if (!ok) return;
+    let pin = randomPin();
+    while (pin === String(s.pin)) pin = randomPin();
+    await updateStudent(s.id, { pin });
+    setShowPin(true);
+    toast(`নতুন পিন: ${pin}`);
+  };
+
+  const portalUrl = `${window.location.origin}/?roll=${encodeURIComponent(s.roll)}`;
+  const portalShareMessage = [
+    'প্রিয় অভিভাবক,',
+    `${s.name}-এর বেতন, হাজিরা ও রশিদ অনলাইনে দেখতে নিচের লিংকে প্রবেশ করুন:`,
+    portalUrl,
+    '',
+    `ক্লাস: ${settings.className}`,
+    `রোল: ${s.roll}`,
+    `পিন: ${s.pin}`,
+    '',
+    '(পিনটি গোপন রাখুন)',
+    `— ${profile?.name || settings.inchargeName}`,
+    `শ্রেণি ইনচার্জ, ${settings.className} (${settings.institutionName || 'স্টারলাইট কলেজ'})`,
+  ].join('\n');
+
+  const copyPortalInfo = async () => {
+    try {
+      await navigator.clipboard.writeText(portalShareMessage);
+      toast('পোর্টাল লিংক ও পিন কপি হয়েছে');
+    } catch {
+      toast('কপি করা যায়নি', 'error');
+    }
   };
 
   const actions = [
@@ -145,8 +195,30 @@ function StudentDetail({ student: s }) {
 
       {tab === 'fees' && (
         <div className="mt-4 space-y-5">
+          {fineSummary.total > 0 && (
+            <div className="rounded-3xl bg-rose-50/60 p-4 ring-1 ring-rose-100">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[
+                  ['মোট জরিমানা', fineSummary.total, 'text-ink'],
+                  ['মওকুফ', fineSummary.waived, 'text-slate-500'],
+                  ['বাকি জরিমানা', fineSummary.due, fineSummary.due > 0 ? 'text-rose-600' : 'text-emerald-600'],
+                ].map(([k, v, c]) => (
+                  <div key={k}>
+                    <p className={cx('tabular text-[17px] font-extrabold', c)}>{taka(v)}</p>
+                    <p className="text-[11.5px] text-slate-500">{k}</p>
+                  </div>
+                ))}
+              </div>
+              {fineSummary.due > 0 && (
+                <Button variant="secondary" size="sm" icon={Undo2} block className="mt-3" onClick={() => setWaiving(true)}>
+                  জরিমানা মওকুফ
+                </Button>
+              )}
+            </div>
+          )}
           <Group title="মাসিক বেতন">
-            {sFees.length === 0 && <Empty text="কোনো রেকর্ড নেই" />}
+            {feeStartMonth && <p className="py-2.5 text-[13px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে</p>}
+            {sFees.length === 0 && <Empty text={feeStartMonth ? `${feeStartLabel(feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'} />}
             {sFees.map((f) => {
               const st = feeStatus(f);
               return (
@@ -158,12 +230,12 @@ function StudentDetail({ student: s }) {
                       </p>
                       <p className="tabular text-[12.5px] text-slate-500">
                         ফি {taka(f.amount)}
-                        {f.fine ? ` · জরিমানা ${taka(f.fine)}` : ''} · দিয়েছে {taka(f.paid)}
+                        {f.fine ? ` · জরিমানা ${taka(f.fine)}${f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}` : ''} · দিয়েছে {taka(f.paid)}
                       </p>
                     </div>
                     <div className="text-right">
-                      <Badge tone={FEE_STATUS[st]?.tone} dot>
-                        {FEE_STATUS[st]?.bn}
+                      <Badge tone={feeBadge(f, st).tone} dot>
+                        {feeBadge(f, st).bn}
                       </Badge>
                       {Number(f.due) > 0 && <p className="tabular mt-1 text-[13px] font-bold text-rose-600">{taka(f.due)}</p>}
                     </div>
@@ -282,29 +354,104 @@ function StudentDetail({ student: s }) {
               <button type="button" onClick={() => setShowPin((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100" aria-label="পিন দেখুন">
                 {showPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
+              {s.guardianPhone && (
+                <Button
+                  as="a"
+                  variant="soft-success"
+                  size="xs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  href={waLink(s.guardianPhone, portalShareMessage)}
+                  icon={WhatsAppIcon}
+                  title="WhatsApp এ পিন পাঠান"
+                >
+                  শেয়ার
+                </Button>
+              )}
+              <Button variant="secondary" size="xs" icon={RefreshCw} onClick={newPin}>
+                নতুন পিন
+              </Button>
             </div>
           </div>
-          {s.guardianPhone && (
+          <div className="mt-4 flex gap-2">
+            {s.guardianPhone && (
+              <Button
+                as="a"
+                variant="soft-success"
+                className="flex-1"
+                target="_blank"
+                rel="noopener noreferrer"
+                href={waLink(s.guardianPhone, portalShareMessage)}
+              >
+                <WhatsAppIcon className="h-5 w-5" /> পিন ও লিংক পাঠান
+              </Button>
+            )}
             <Button
-              as="a"
-              variant="soft-success"
-              block
-              className="mt-4"
-              target="_blank"
-              rel="noopener noreferrer"
-              href={waLink(
-                s.guardianPhone,
-                `প্রিয় অভিভাবক,\n${s.name}-এর তথ্য (বেতন, হাজিরা, রশিদ) অনলাইনে দেখতে:\n${window.location.origin}\n\nক্লাস: ${settings.className}\nরোল: ${s.roll}\nপিন: ${s.pin}\n\nপিন গোপন রাখুন।\n${settings.inchargeName}\nক্লাস ইনচার্জ, ${settings.className}`,
-              )}
+              type="button"
+              variant="secondary"
+              icon={Copy}
+              className={s.guardianPhone ? '' : 'flex-1'}
+              onClick={copyPortalInfo}
             >
-              <WhatsAppIcon className="h-5 w-5" /> পোর্টালের রোল ও পিন পাঠান
+              কপি
             </Button>
-          )}
+          </div>
           <Button variant="soft-danger" icon={Trash2} block className="mt-2.5" onClick={remove}>
             শিক্ষার্থী মুছে ফেলুন
           </Button>
         </div>
       )}
+      <Sheet open={waiving} onClose={() => setWaiving(false)} title="জরিমানা মওকুফ" subtitle={`${s.name} · রোল ${s.roll}`}>
+        {waiving && <WaiveForm student={s} due={fineSummary.due} onDone={() => setWaiving(false)} />}
+      </Sheet>
+    </div>
+  );
+}
+
+/** Waive part of a student's fines (e.g. approved by the principal); taken off oldest fines first */
+function WaiveForm({ student, due, onDone }) {
+  const { waiveStudentFines } = useApp();
+  const { toast } = useUI();
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const n = Number(amount) || 0;
+
+  const save = async () => {
+    if (n <= 0 || n > due || busy) return;
+    setBusy(true);
+    const w = await waiveStudentFines(student.id, n, note.trim());
+    toast(`${taka(w)} জরিমানা মওকুফ হয়েছে`);
+    onDone();
+  };
+
+  return (
+    <div className="space-y-4 pt-1">
+      <div className="rounded-2xl bg-slate-50 p-4 text-center">
+        <p className="text-[12.5px] text-slate-500">এখন বাকি জরিমানা</p>
+        <p className="tabular text-[24px] font-extrabold text-rose-600">{taka(due)}</p>
+      </div>
+      <Field label="কত টাকা মওকুফ" hint="পুরোনো জরিমানা থেকে আগে বাদ যাবে" error={n > due ? `সর্বোচ্চ ${taka(due)}` : ''}>
+        <Input type="number" inputMode="numeric" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="যেমন 300" autoFocus />
+      </Field>
+      <div className="-mt-2 flex gap-2">
+        {[Math.round(due / 2), due].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
+          <button key={v} type="button" onClick={() => setAmount(String(v))} className={cx('press flex-1 rounded-xl py-2 text-[13.5px] font-bold', n === v ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}>
+            {v === due ? `সব (${taka(v)})` : `অর্ধেক (${taka(v)})`}
+          </button>
+        ))}
+      </div>
+      <Field label="কারণ (ঐচ্ছিক)">
+        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="যেমন অধ্যক্ষের অনুমতিতে" />
+      </Field>
+      {n > 0 && n <= due && (
+        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[13.5px] text-emerald-800">
+          মওকুফের পর বাকি জরিমানা: <b className="tabular">{taka(due - n)}</b>
+        </p>
+      )}
+      <Button size="lg" block icon={Undo2} disabled={n <= 0 || n > due || busy} onClick={save}>
+        {busy ? 'সংরক্ষণ হচ্ছে…' : `${taka(n)} মওকুফ করুন`}
+      </Button>
     </div>
   );
 }
@@ -346,7 +493,7 @@ export function StudentFormSheet() {
 }
 
 function StudentForm({ editing }) {
-  const { students, settings, addStudent, updateStudent, classId } = useApp();
+  const { students, settings, addStudent, updateStudent, classId, isBeforeStart, feeStartMonth } = useApp();
   const { closeStudentForm, toast, openStudent } = useUI();
   const departments = settings.departments || [];
   const sections = settings.sections || [];
@@ -373,6 +520,7 @@ function StudentForm({ editing }) {
     };
   });
   const [errors, setErrors] = useState({});
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(feeStartMonth));
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }));
 
   const save = async () => {
@@ -396,7 +544,7 @@ function StudentForm({ editing }) {
       toast('তথ্য আপডেট হয়েছে');
       closeStudentForm();
     } else {
-      const created = await addStudent(data);
+      const created = await addStudent(data, { paidAtAdmission });
       toast(`${created.name} যুক্ত হয়েছে`);
       closeStudentForm();
       setTimeout(() => openStudent(created), 80);
@@ -491,6 +639,16 @@ function StudentForm({ editing }) {
           />
         </Field>
       </FormSection>
+
+      {!editing && (
+        <PaidAtAdmission
+          checked={paidAtAdmission}
+          onChange={setPaidAtAdmission}
+          month={monthBn(settings.currentMonth)}
+          beforeStart={isBeforeStart(settings.currentMonth, settings.currentYear)}
+          startLabel={feeStartLabel(feeStartMonth)}
+        />
+      )}
 
       <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
         <Button size="lg" block onClick={save}>

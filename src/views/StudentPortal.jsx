@@ -6,13 +6,14 @@ import {
 } from 'lucide-react';
 import { AppContext, useApp, normalizeFine, studentIdFor } from '../context/AppContext';
 import { CLASS_INDEX_PATH } from '../lib/classIndex';
+import { feeStartLabel } from '../lib/classLogic';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
 import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
 import {
-  taka, monthBn, groupBn, fmtDate, feeStatus, ACADEMIC_MONTHS, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
+  taka, monthBn, groupBn, fmtDate, feeStatus, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
 } from '../lib/format';
 import { portalKey } from '../lib/hash';
 
@@ -77,12 +78,13 @@ const fieldCls =
   'tabular h-14 w-full rounded-2xl bg-slate-50 pl-12 pr-4 text-[18px] font-bold text-ink outline-none ring-1 ring-inset ring-slate-200 transition placeholder:text-[15px] placeholder:font-medium placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-brand-500';
 
 function LoginCard({ onSuccess }) {
-  const last = useMemo(readLast, []);
+  const last = useMemo(() => readLast(), []);
+  const urlRoll = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('roll') : null;
   const [classes, setClasses] = useState(null); // public class list (null = still loading)
   const [indexMissing, setIndexMissing] = useState(false);
   const [cls, setCls] = useState(''); // only typed when the public class list isn't available
   const [choices, setChoices] = useState(null); // same roll + PIN found in more than one class
-  const [roll, setRoll] = useState(last.roll ? String(last.roll) : '');
+  const [roll, setRoll] = useState(() => (urlRoll ? String(urlRoll).trim() : last.roll ? String(last.roll) : ''));
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
@@ -311,8 +313,9 @@ function StudentProfile({ student: s, onExit }) {
   const sFees = useMemo(
     () =>
       fees
-        .filter((f) => f.studentId === s.id)
-        .sort((a, b) => a.year - b.year || ACADEMIC_MONTHS.indexOf(a.month) - ACADEMIC_MONTHS.indexOf(b.month)),
+        // Months before the class's fee start were taken with admission — one note instead of rows
+        .filter((f) => f.studentId === s.id && !f.beforeStart)
+        .sort((a, b) => Number(a.year) - Number(b.year) || EN_MONTHS.indexOf(a.month) - EN_MONTHS.indexOf(b.month)),
     [fees, s.id],
   );
   const sExams = examFees.filter((e) => e.studentId === s.id);
@@ -320,7 +323,7 @@ function StudentProfile({ student: s, onExit }) {
   const sFines = fines.filter((f) => f.studentId === s.id).map(normalizeFine);
 
   // A fee row's "due" already includes its late fine; split it back out for the breakdown
-  const feeFineDue = sFees.reduce((a, f) => a + Math.min(Number(f.fine || 0), Number(f.due || 0)), 0);
+  const feeFineDue = sFees.reduce((a, f) => a + Math.min(Number(f.fine || 0) - Number(f.fineWaived || 0), Number(f.due || 0)), 0);
   const monthlyDue = sFees.reduce((a, f) => a + Number(f.due || 0), 0) - feeFineDue;
   const fineDue = sFines.reduce((a, f) => a + f.due, 0);
   const lateFine = feeFineDue + fineDue;
@@ -465,6 +468,11 @@ function StudentProfile({ student: s, onExit }) {
             <>
               <Card className="p-5">
                 <p className="mb-2 text-[16px] font-bold text-ink">মাসিক বেতন</p>
+                {settings.feeStartMonth && (
+                  <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">
+                    ✓ {feeStartLabel(settings.feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে
+                  </p>
+                )}
                 <ol className="relative">
                   {sFees.map((f, i) => {
                     const paid = feeStatus(f) === 'Paid';
@@ -481,11 +489,11 @@ function StudentProfile({ student: s, onExit }) {
                             </p>
                             <p className="tabular text-[12.5px] text-slate-500">
                               {taka(f.amount)}
-                              {f.fine ? ` + জরিমানা ${taka(f.fine)}` : ''}
+                              {f.fine ? ` + জরিমানা ${taka(f.fine)}${f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}` : ''}
                             </p>
                           </div>
                           {paid ? (
-                            <Badge tone="green">পরিশোধিত</Badge>
+                            <Badge tone="green">{f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
                           ) : (
                             <div className="text-right">
                               <Badge tone="red">বাকি</Badge>
@@ -496,7 +504,9 @@ function StudentProfile({ student: s, onExit }) {
                       </li>
                     );
                   })}
-                  {sFees.length === 0 && <p className="text-[14px] text-slate-400">কোনো রেকর্ড নেই</p>}
+                  {sFees.length === 0 && (
+                    <p className="text-[14px] text-slate-400">{settings.feeStartMonth ? `${feeStartLabel(settings.feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'}</p>
+                  )}
                 </ol>
               </Card>
 

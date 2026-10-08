@@ -1,30 +1,63 @@
 import React, { useMemo, useState } from 'react';
 import {
   Bell, Search, UserPlus, CalendarCheck, TriangleAlert, ChartColumn, ArrowRight, ReceiptText, Users, Wallet,
-  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2,
+  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, Zap, CreditCard, Phone,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Card, IconButton, Avatar, RollBadge, Badge, Button, Progress, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
-import { taka, monthBn, fmtDate, fmtTime, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate } from '../lib/format';
+import { AbsenteeSheet } from '../components/AbsenteeSheet';
+import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, toEnDigits } from '../lib/format';
 
 export const AdminDashboard = () => {
   const {
     students, totalStudentsCount, activeStudentsCount, thisMonthCollection, thisMonthDue, totalDueAcrossAll,
     paidCount, attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, missingFeeCount, generateMonthFees, profile,
   } = useApp();
-  const { openWhatsApp, openReceipt, openStudentForm, toast } = useUI();
+  const { openWhatsApp, openReceipt, openStudentForm, openPayment, toast } = useUI();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [quickRoll, setQuickRoll] = useState('');
+  const [todayPaymentsOpen, setTodayPaymentsOpen] = useState(false);
+  const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
+
+  const handleQuickPay = (e) => {
+    e.preventDefault();
+    const raw = toEnDigits(quickRoll).trim();
+    if (!raw) return;
+    const r = Number(raw);
+    const s = students.find((x) => Number(x.roll) === r && x.status !== 'inactive');
+    if (!s) {
+      toast(`রোল ${raw} এর কোনো সক্রিয় শিক্ষার্থী পাওয়া যায়নি`, 'error');
+      return;
+    }
+    setQuickRoll('');
+    openPayment(s);
+  };
 
   const today = todayISO();
+  const dayOf = (p) => (p.paymentDate ? String(p.paymentDate).slice(0, 10) : '');
+  const todayPayments = useMemo(
+    () => payments.filter((p) => dayOf(p) === today && p.status !== 'void'),
+    [payments, today],
+  );
+  const todayCollected = useMemo(
+    () => todayPayments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0),
+    [todayPayments],
+  );
+
   const todayRecord = attendance[today];
   const counts = { Present: 0, Absent: 0, Late: 0, Leave: 0 };
   Object.values(todayRecord || {}).forEach((st) => {
     if (counts[st] != null) counts[st] += 1;
   });
   const attTotal = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const absentStudentsToday = useMemo(() => {
+    if (!todayRecord) return [];
+    return students.filter((s) => todayRecord[s.id] === 'Absent' && s.status !== 'inactive');
+  }, [students, todayRecord]);
 
   const monthFees = fees.filter((f) => f.month === settings.currentMonth && f.year === settings.currentYear);
   const overdueStudents = students.filter((s) => {
@@ -86,13 +119,53 @@ export const AdminDashboard = () => {
         <IconButton icon={Bell} label="নোটিফিকেশন" badge={notifications.length || null} onClick={() => setNotifOpen(true)} />
       </div>
 
-      <button
-        type="button"
-        onClick={() => setSearchOpen(true)}
-        className="press flex h-12 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left text-[15px] text-slate-400 ring-1 ring-slate-200/80 shadow-card"
-      >
-        <Search className="h-5 w-5" /> রোল, নাম বা ফোন দিয়ে খুঁজুন
-      </button>
+      {/* Quick Search & Quick Pay Bar */}
+      <div className="flex flex-col gap-2.5 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="press flex h-12 flex-1 items-center gap-3 rounded-2xl bg-white px-4 text-left text-[14.5px] text-slate-400 ring-1 ring-slate-200/80 shadow-card"
+        >
+          <Search className="h-5 w-5" /> রোল, নাম বা ফোন দিয়ে খুঁজুন
+        </button>
+
+        <form onSubmit={handleQuickPay} className="flex h-12 items-center gap-2 rounded-2xl bg-white p-1 pl-3.5 ring-1 ring-slate-200/80 shadow-card sm:w-[260px]">
+          <Zap className="h-4 w-4 shrink-0 text-emerald-600" />
+          <input
+            type="text"
+            inputMode="numeric"
+            value={quickRoll}
+            onChange={(e) => setQuickRoll(e.target.value)}
+            placeholder="কুইক পে: রোল..."
+            className="tabular min-w-0 flex-1 bg-transparent text-[14.5px] font-bold text-ink placeholder:text-[13px] placeholder:font-normal placeholder:text-slate-400 outline-none"
+          />
+          <Button type="submit" size="sm" variant="success" icon={CreditCard} disabled={!quickRoll.trim()}>
+            আদায়
+          </Button>
+        </form>
+      </div>
+
+      {/* Today's Cash In Hand Bar */}
+      <div className="mt-2.5 flex items-center justify-between rounded-2xl bg-emerald-50/90 px-4 py-2.5 ring-1 ring-emerald-200/70 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm">
+            <Wallet className="h-4 w-4" />
+          </span>
+          <div>
+            <p className="text-[12px] font-bold text-emerald-800">আজকের ক্যাশ আদায় ({dayNameBn(today)})</p>
+            <p className="tabular text-[17px] font-extrabold text-emerald-950">
+              {taka(todayCollected)} <span className="text-[12px] font-medium text-emerald-700">· {todayPayments.length}টি রশিদ</span>
+            </p>
+          </div>
+        </div>
+        {todayPayments.length > 0 ? (
+          <Button size="xs" variant="success" onClick={() => setTodayPaymentsOpen(true)}>
+            রশিদ দেখুন
+          </Button>
+        ) : (
+          <span className="text-[12px] font-medium text-emerald-700">আজ এখনো আদায় নেই</span>
+        )}
+      </div>
 
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-5">
       <div>
@@ -231,6 +304,19 @@ export const AdminDashboard = () => {
                 </div>
               ))}
             </div>
+            {counts.Absent > 0 && (
+              <div className="mt-3.5 border-t border-slate-100 pt-3">
+                <Button
+                  block
+                  size="sm"
+                  variant="soft-danger"
+                  icon={WhatsAppIcon}
+                  onClick={() => setAbsentSheetOpen(true)}
+                >
+                  অনুপস্থিত {counts.Absent} জনের অভিভাবককে WhatsApp নোটিফিকেশন পাঠান
+                </Button>
+              </div>
+            )}
           </>
         ) : (
           <div className="flex items-center gap-3">
@@ -287,7 +373,21 @@ export const AdminDashboard = () => {
 
       <SearchSheet open={searchOpen} onClose={() => setSearchOpen(false)} />
 
-      <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="নোটিফিকেশন" subtitle={`${notifications.length}টি সতর্কবার্তা`}>
+      <AbsenteeSheet
+        open={absentSheetOpen}
+        onClose={() => setAbsentSheetOpen(false)}
+        date={today}
+        absentStudents={absentStudentsToday}
+      />
+
+      <TodayPaymentsSheet
+        open={todayPaymentsOpen}
+        onClose={() => setTodayPaymentsOpen(false)}
+        payments={todayPayments}
+        total={todayCollected}
+      />
+
+      <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="নোটিফিケーション" subtitle={`${notifications.length}টি সতর্কবার্তা`}>
         {notifications.length === 0 ? (
           <EmptyState icon={CheckCircle2} title="সব ঠিক আছে" text="এই মুহূর্তে কোনো সতর্কবার্তা নেই" />
         ) : (
@@ -333,9 +433,62 @@ const LinkBtn = ({ children, onClick }) => (
   </button>
 );
 
+function TodayPaymentsSheet({ open, onClose, payments, total }) {
+  const { openReceipt } = useUI();
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      full={payments.length > 3}
+      title="আজকের ক্যাশ আদায়"
+      subtitle={`মোট ${taka(total)} · ${payments.length}টি রশিদ`}
+    >
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
+          <div>
+            <p className="text-[12.5px] font-semibold text-emerald-800">মোট ক্যাশ জমার পরিমাণ</p>
+            <p className="tabular text-[24px] font-extrabold text-emerald-950">{taka(total)}</p>
+          </div>
+          <span className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[13px] font-bold text-white shadow-sm">
+            {payments.length}টি লেনদেন
+          </span>
+        </div>
+
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/70">
+          {payments.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                onClose();
+                setTimeout(() => openReceipt(p), 80);
+              }}
+              className="flex w-full items-center gap-3 p-3.5 text-left active:bg-slate-50"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+                <ReceiptText className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[14.5px] font-bold text-ink">{p.studentName}</p>
+                <p className="text-[12px] text-slate-500">
+                  রোল {p.roll} · রশিদ: {p.receiptNo} · {p.method}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="tabular text-[15px] font-bold text-emerald-600">+{taka(p.amount)}</p>
+                <span className="text-[11px] text-slate-400">রশিদ দেখুন ›</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
 function SearchSheet({ open, onClose }) {
   const { students, calculateStudentTotalDue } = useApp();
-  const { openStudent } = useUI();
+  const { openStudent, openPayment } = useUI();
   const [q, setQ] = useState('');
 
   const results = useMemo(() => {
@@ -365,24 +518,46 @@ function SearchSheet({ open, onClose }) {
         {results.map((s) => {
           const due = calculateStudentTotalDue(s.id);
           return (
-            <button
+            <div
               key={s.id}
-              type="button"
               onClick={() => {
                 onClose();
                 setTimeout(() => openStudent(s), 80);
               }}
-              className="flex w-full items-center gap-3 py-3 text-left active:bg-slate-50"
+              className="flex w-full cursor-pointer items-center gap-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
             >
               <RollBadge roll={s.roll} seed={s.id} size={44} />
-              <span className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1">
                 <span className="block truncate text-[15.5px] font-semibold text-ink">{s.name}</span>
                 <span className="block text-[12.5px] text-slate-500">
                   {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ')}
                 </span>
-              </span>
-              {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">✓</Badge>}
-            </button>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">✓</Badge>}
+                <Button
+                  size="xs"
+                  variant="soft-success"
+                  icon={CreditCard}
+                  onClick={() => {
+                    onClose();
+                    setTimeout(() => openPayment(s), 80);
+                  }}
+                  title="টাকা আদায়"
+                >
+                  আদায়
+                </Button>
+                {s.guardianPhone && (
+                  <a
+                    href={`tel:${s.guardianPhone}`}
+                    className="grid h-8 w-8 place-items-center rounded-xl bg-sky-50 text-sky-600 active:bg-sky-100"
+                    title="কল করুন"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                  </a>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

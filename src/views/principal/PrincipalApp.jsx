@@ -3,6 +3,7 @@ import { CLASS_INDEX_PATH, buildClassIndex } from '../../lib/classIndex';
 import {
   House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, Mail, KeyRound,
   Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard, Upload,
+  Search, X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
@@ -12,15 +13,15 @@ import {
   STAFF_COUNTER_PATH, DEFAULT_STAFF_PREFIX, loginIdPath, staffEmail, isStaffEmail, formatStaffId, nextStaffSerial, generateStaffPassword,
 } from '../../lib/staffLogin';
 import { AccountSheet } from '../../components/AccountSheets';
-import { StudentImport } from './StudentImport';
 import { useBackHandler } from '../../lib/backstack';
+const StudentImport = React.lazy(() => import('./StudentImport').then((m) => ({ default: m.StudentImport })));
 import { taka, monthBn, EN_MONTHS, waLink } from '../../lib/format';
 import {
-  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, cx, CONTAINER, GUTTER,
+  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, FeeStartSelect, cx, CONTAINER, GUTTER,
   CARD_GRID, DOCK, DOCK_BOTTOM,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
-import { assignOps, deleteClassDeep, CLASS_PRESETS } from './principalData';
+import { assignOps, deleteClassDeep, renameClassCode, reissueTeacherLogin, deleteTeacher, CLASS_PRESETS, SECTION_PRESETS, suggestClassCode } from './principalData';
 
 const TABS = [
   { id: 'home', label: 'ওভারভিউ', icon: House },
@@ -34,6 +35,12 @@ export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
   const [tab, setTab] = useState('home');
   const [classes, setClasses] = useState(null);
   const [users, setUsers] = useState(null);
+  const [classFilter, setClassFilter] = useState('all');
+  const [editingClass, setEditingClass] = useState(null);
+  const [creatingTeacher, setCreatingTeacher] = useState(false);
+  const [createdTeacher, setCreatedTeacher] = useState(null);
+  const [importingStudents, setImportingStudents] = useState(false);
+  const [attendanceSheet, setAttendanceSheet] = useState(false);
 
   useEffect(() => backend.subscribeCollection(['classes'], (l) => setClasses(l.sort((a, b) => String(a.id).localeCompare(String(b.id))))), []);
   useEffect(() => backend.subscribeCollection(['users'], setUsers), []);
@@ -61,16 +68,89 @@ export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
           {classes === null || users === null ? (
             <p className="py-24 text-center text-[14px] text-slate-400">লোড হচ্ছে…</p>
           ) : tab === 'home' ? (
-            <Overview {...data} go={setTab} />
+            <Overview
+              {...data}
+              go={setTab}
+              onNewClass={() => setEditingClass({})}
+              onNewTeacher={() => setCreatingTeacher(true)}
+              onImportStudents={() => setImportingStudents(true)}
+              onOpenAttendanceReminder={() => setAttendanceSheet(true)}
+              onFilterClasses={(f) => {
+                setClassFilter(f);
+                setTab('classes');
+              }}
+            />
           ) : tab === 'classes' ? (
-            <ClassesTab {...data} />
+            <ClassesTab
+              {...data}
+              filter={classFilter}
+              onFilterChange={setClassFilter}
+              onEditClass={setEditingClass}
+              onOpenImport={() => setImportingStudents(true)}
+            />
           ) : tab === 'teachers' ? (
-            <TeachersTab {...data} />
+            <TeachersTab
+              {...data}
+              onNewTeacher={() => setCreatingTeacher(true)}
+              onTeacherReissued={(info) => setCreatedTeacher(info)}
+            />
           ) : (
             <PrincipalSettings {...data} onOpenPortal={onOpenPortal} onSignOut={onSignOut} />
           )}
         </div>
       </main>
+
+      <Sheet open={importingStudents} onClose={() => setImportingStudents(false)} full title="শিক্ষার্থী যোগ" subtitle="সরাসরি ক্লাসের ইনচার্জের তালিকায় যাবে">
+        {importingStudents && (
+          <React.Suspense fallback={<p className="py-12 text-center text-[14px] text-slate-400">লোড হচ্ছে…</p>}>
+            <StudentImport classes={classes || []} onDone={() => setImportingStudents(false)} />
+          </React.Suspense>
+        )}
+      </Sheet>
+
+      <Sheet open={!!editingClass} onClose={() => setEditingClass(null)} full title={editingClass?.id ? 'ক্লাস সম্পাদনা' : 'নতুন ক্লাস'} subtitle={editingClass?.id || 'ক্লাস তৈরি করে ইনচার্জ ঠিক করুন'}>
+        {editingClass && (
+          <ClassForm
+            cls={editingClass.id ? editingClass : null}
+            classes={classes || []}
+            users={users || []}
+            teachers={teachers}
+            onDone={() => setEditingClass(null)}
+          />
+        )}
+      </Sheet>
+
+      <Sheet open={creatingTeacher} onClose={() => setCreatingTeacher(false)} full title="নতুন শিক্ষক" subtitle="লগইনের জন্য অ্যাকাউন্ট তৈরি হবে">
+        {creatingTeacher && (
+          <TeacherForm
+            classes={classes || []}
+            users={users || []}
+            onDone={(info) => {
+              setCreatingTeacher(false);
+              if (info) setTimeout(() => setCreatedTeacher(info), 80);
+            }}
+          />
+        )}
+      </Sheet>
+
+      <Sheet open={!!createdTeacher} onClose={() => setCreatedTeacher(null)} title={createdTeacher?.reissued ? 'নতুন পাসওয়ার্ড তৈরি হয়েছে' : 'অ্যাকাউন্ট তৈরি হয়েছে'} subtitle="লগইন তথ্য শিক্ষককে জানিয়ে দিন">
+        {createdTeacher && <LoginInfo info={createdTeacher} />}
+      </Sheet>
+
+      <Sheet open={attendanceSheet} onClose={() => setAttendanceSheet(false)} title="আজকের হাজিরা বাকি" subtitle={`${(classes || []).filter((c) => c.stats && !c.stats.attendanceTaken).length}টি ক্লাসে আজ এখনো হাজিরা নেওয়া হয়নি`}>
+        {attendanceSheet && (
+          <AttendanceReminderSheet
+            classes={classes || []}
+            teachers={teachers}
+            institution={institution}
+            onClose={() => setAttendanceSheet(false)}
+            onEditClass={(c) => {
+              setAttendanceSheet(false);
+              setEditingClass(c);
+            }}
+          />
+        )}
+      </Sheet>
 
       <nav
         className="no-print fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[480px] border-t border-slate-200/70 bg-white/90 shadow-nav backdrop-blur-xl md:bottom-4 md:max-w-[520px] md:rounded-[26px] md:border"
@@ -96,7 +176,10 @@ export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
 
 /* ───────────────────────── Overview ───────────────────────── */
 
-function Overview({ classes, teachers, institution, profile, onOpenClass, go }) {
+function Overview({
+  classes, teachers, institution, profile, onOpenClass, go,
+  onNewClass, onNewTeacher, onImportStudents, onOpenAttendanceReminder, onFilterClasses,
+}) {
   const month = EN_MONTHS[new Date().getMonth()];
   const sum = (k) => classes.reduce((a, c) => a + Number(c.stats?.[k] || 0), 0);
   const collected = sum('collected');
@@ -136,13 +219,61 @@ function Overview({ classes, teachers, institution, profile, onOpenClass, go }) 
         </div>
       </div>
 
+      {/* Quick Actions */}
+      <div className="mt-3.5 grid grid-cols-3 gap-2">
+        <button
+          type="button"
+          onClick={onNewClass}
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
+            <Plus className="h-5 w-5" />
+          </span>
+          <span className="text-[12.5px] font-bold text-ink">নতুন ক্লাস</span>
+        </button>
+        <button
+          type="button"
+          onClick={onNewTeacher}
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-600">
+            <UserPlus className="h-5 w-5" />
+          </span>
+          <span className="text-[12.5px] font-bold text-ink">নতুন শিক্ষক</span>
+        </button>
+        <button
+          type="button"
+          onClick={onImportStudents}
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+            <Upload className="h-5 w-5" />
+          </span>
+          <span className="text-[12.5px] font-bold text-ink">শিক্ষার্থী যোগ</span>
+        </button>
+      </div>
+
       {(noIncharge.length > 0 || noAttendance.length > 0) && (
-        <div className="mt-3 space-y-2.5">
+        <div className="mt-3.5 space-y-2.5">
           {noIncharge.length > 0 && (
-            <Alert tone="amber" icon={TriangleAlert} title={`${noIncharge.length}টি ক্লাসে ইনচার্জ নেই`} text={noIncharge.map((c) => c.name).join(', ')} action="দায়িত্ব দিন" onAction={() => go('classes')} />
+            <Alert
+              tone="amber"
+              icon={TriangleAlert}
+              title={`${noIncharge.length}টি ক্লাসে ইনচার্জ নেই`}
+              text={noIncharge.map((c) => c.name).join(', ')}
+              action="দায়িত্ব দিন"
+              onAction={() => onFilterClasses('noIncharge')}
+            />
           )}
           {noAttendance.length > 0 && (
-            <Alert tone="red" icon={CalendarX} title={`আজ ${noAttendance.length}টি ক্লাসে হাজিরা নেওয়া হয়নি`} text={noAttendance.map((c) => c.name).join(', ')} />
+            <Alert
+              tone="red"
+              icon={CalendarX}
+              title={`আজ ${noAttendance.length}টি ক্লাসে হাজিরা নেওয়া হয়নি`}
+              text={noAttendance.map((c) => c.name).join(', ')}
+              action="রিমাইন্ডার দিন"
+              onAction={onOpenAttendanceReminder}
+            />
           )}
         </div>
       )}
@@ -154,7 +285,7 @@ function Overview({ classes, teachers, institution, profile, onOpenClass, go }) 
         </button>
       </div>
       {classes.length === 0 ? (
-        <EmptyState icon={School} title="এখনো কোনো ক্লাস নেই" text="প্রথমে একটি ক্লাস তৈরি করুন, তারপর শিক্ষককে দায়িত্ব দিন" action={<Button icon={Plus} onClick={() => go('classes')}>ক্লাস তৈরি করুন</Button>} />
+        <EmptyState icon={School} title="এখনো কোনো ক্লাস নেই" text="প্রথমে একটি ক্লাস তৈরি করুন, তারপর শিক্ষককে দায়িত্ব দিন" action={<Button icon={Plus} onClick={onNewClass}>ক্লাস তৈরি করুন</Button>} />
       ) : (
         <div className={CARD_GRID}>
           {classes.map((c) => (
@@ -183,10 +314,101 @@ const Alert = ({ tone, icon: Icon, title, text, action, onAction }) => (
   </div>
 );
 
+function AttendanceReminderSheet({ classes, teachers, institution, onClose, onEditClass }) {
+  const noAttendance = (classes || []).filter((c) => c.stats && !c.stats.attendanceTaken);
+
+  return (
+    <div className="space-y-3 pt-1">
+      {noAttendance.length === 0 ? (
+        <div className="py-8 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+            <Check className="h-7 w-7" />
+          </div>
+          <p className="mt-3 text-[16px] font-bold text-ink">সব ক্লাসে আজকের হাজিরা সম্পন্ন হয়েছে!</p>
+          <p className="mt-1 text-[13px] text-slate-500">কোনো ক্লাসেই আজকের হাজিরা বাকি নেই।</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          <p className="text-[13px] text-slate-500">
+            নিচের ইনচার্জদের এক ক্লিকে WhatsApp-এ বার্তা বা সরাসরি কল করে দ্রুত হাজিরা সম্পন্ন করার তাগিদ দিন:
+          </p>
+          {noAttendance.map((c) => {
+            const t = teachers.find((u) => u.id === c.inchargeUid);
+            const teacherName = t?.name || c.inchargeName;
+            const phone = t?.phone || c.inchargePhone;
+            const text = `আসসালামু আলাইকুম ${teacherName ? `${teacherName} ` : ''}স্যার/ম্যাডাম,\nআজকের ${c.name}${c.section ? ` (${c.section})` : ''}-এর হাজিরা এখনো পোর্টালে এন্ট্রি করা হয়নি। অনুগ্রহ করে দ্রুত আজকের হাজিরা সম্পন্ন করুন।\n— অধ্যক্ষ${institution?.name ? `, ${institution.name}` : ''}`;
+
+            return (
+              <div key={c.id} className="flex flex-col gap-2.5 rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/80">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-bold text-ink">{c.name}</p>
+                    <p className="truncate text-[12.5px] text-slate-500">
+                      {[c.section, c.id].filter(Boolean).join(' · ')} · {c.stats?.students ?? 0} জন শিক্ষার্থী
+                    </p>
+                  </div>
+                  <Badge tone="red">হাজিরা বাকি</Badge>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 border-t border-slate-200/60 pt-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11.5px] text-slate-400">দায়িত্বপ্রাপ্ত ইনচার্জ</p>
+                    <p className="truncate text-[13.5px] font-semibold text-slate-700">
+                      {teacherName || <span className="text-amber-600">ইনচার্জ নেই</span>}
+                    </p>
+                  </div>
+
+                  {phone ? (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={`tel:${phone}`}
+                        className="grid h-9 w-9 place-items-center rounded-xl bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100"
+                        title="কল করুন"
+                        aria-label="কল করুন"
+                      >
+                        <Phone className="h-4 w-4" />
+                      </a>
+                      <Button
+                        as="a"
+                        href={waLink(phone, text)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        variant="success"
+                        size="sm"
+                      >
+                        <WhatsAppIcon className="h-4 w-4" /> WhatsApp
+                      </Button>
+                    </div>
+                  ) : teacherName ? (
+                    <Badge tone="slate">ফোন নম্বর নেই</Badge>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        onClose();
+                        onEditClass(c);
+                      }}
+                    >
+                      ইনচার্জ দিন
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClassCard({ c, teacher, onOpen, onEdit }) {
   const st = c.stats || {};
   const total = Number(st.collected || 0) + Number(st.monthDue || 0);
   const pct = total ? (st.collected / total) * 100 : 0;
+  const inchargePhone = teacher?.phone || c.inchargePhone;
+
   return (
     <Card className="overflow-hidden">
       <button type="button" onClick={onOpen} className="w-full p-4 text-left">
@@ -204,12 +426,36 @@ function ClassCard({ c, teacher, onOpen, onEdit }) {
           {st.overdue > 0 && <Badge tone="red">{st.overdue} মেয়াদোত্তীর্ণ</Badge>}
         </div>
 
-        <div className="mt-3 flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2">
-          <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-          {teacher || c.inchargeName ? (
-            <span className="truncate text-[13.5px] font-semibold text-slate-700">{teacher?.name || c.inchargeName}</span>
-          ) : (
-            <span className="text-[13.5px] font-semibold text-amber-600">ইনচার্জ নেই</span>
+        <div className="mt-3 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
+            {teacher || c.inchargeName ? (
+              <span className="truncate text-[13.5px] font-semibold text-slate-700">{teacher?.name || c.inchargeName}</span>
+            ) : (
+              <span className="text-[13.5px] font-semibold text-amber-600">ইনচার্জ নেই</span>
+            )}
+          </div>
+          {inchargePhone && (
+            <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <a
+                href={`tel:${inchargePhone}`}
+                className="grid h-7 w-7 place-items-center rounded-lg bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                title="কল করুন"
+                aria-label="কল করুন"
+              >
+                <Phone className="h-3.5 w-3.5" />
+              </a>
+              <a
+                href={waLink(inchargePhone)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid h-7 w-7 place-items-center rounded-lg bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                title="WhatsApp"
+                aria-label="WhatsApp"
+              >
+                <WhatsAppIcon className="h-3.5 w-3.5" />
+              </a>
+            </div>
           )}
         </div>
 
@@ -218,11 +464,11 @@ function ClassCard({ c, teacher, onOpen, onEdit }) {
             হিসাব এখনো আসেনি — ইনচার্জ বা আপনি ক্লাসটি একবার খুললেই দেখা যাবে
           </p>
         ) : (
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          <Mini label="শিক্ষার্থী" value={st.students ?? '—'} />
-          <Mini label="আদায়" value={st.collected != null ? taka(st.collected) : '—'} cls="text-emerald-600" />
-          <Mini label="আজ হাজিরা" value={st.attendanceTaken ? `${st.present}/${st.students}` : 'নেয়নি'} cls={st.attendanceTaken ? '' : 'text-rose-500'} />
-        </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            <Mini label="শিক্ষার্থী" value={st.students ?? '—'} />
+            <Mini label="আদায়" value={st.collected != null ? taka(st.collected) : '—'} cls="text-emerald-600" />
+            <Mini label="আজ হাজিরা" value={st.attendanceTaken ? `${st.present}/${st.students}` : 'নেয়নি'} cls={st.attendanceTaken ? '' : 'text-rose-500'} />
+          </div>
         )}
         {c.stats && <Progress value={pct} className="mt-3 h-1.5" />}
       </button>
@@ -251,9 +497,33 @@ const Mini = ({ label, value, cls }) => (
 
 /* ───────────────────────── Classes ───────────────────────── */
 
-function ClassesTab({ classes, users, teachers, onOpenClass }) {
-  const [editing, setEditing] = useState(null); // {} for new, class for edit
-  const [importing, setImporting] = useState(false);
+function ClassesTab({ classes, users: _users, teachers, onOpenClass, filter = 'all', onFilterChange, onEditClass, onOpenImport }) {
+  const [query, setQuery] = useState('');
+  const handleFilter = (f) => onFilterChange?.(f);
+
+  const noInchargeCount = useMemo(() => classes.filter((c) => !c.inchargeUid).length, [classes]);
+  const noAttCount = useMemo(() => classes.filter((c) => c.stats && !c.stats.attendanceTaken).length, [classes]);
+  const overdueCount = useMemo(() => classes.filter((c) => Number(c.stats?.overdue || 0) > 0).length, [classes]);
+
+  const q = query.trim().toLowerCase();
+  const list = useMemo(() => {
+    return classes.filter((c) => {
+      if (filter === 'noIncharge' && c.inchargeUid) return false;
+      if (filter === 'noAttendance' && (!c.stats || c.stats.attendanceTaken)) return false;
+      if (filter === 'overdue' && !Number(c.stats?.overdue || 0)) return false;
+      if (!q) return true;
+      const t = teachers.find((u) => u.id === c.inchargeUid);
+      return (
+        String(c.name || '').toLowerCase().includes(q) ||
+        String(c.id || '').toLowerCase().includes(q) ||
+        String(c.section || '').toLowerCase().includes(q) ||
+        String(c.session || '').toLowerCase().includes(q) ||
+        String(t?.name || c.inchargeName || '').toLowerCase().includes(q) ||
+        String(t?.phone || c.inchargePhone || '').includes(q)
+      );
+    });
+  }, [classes, filter, q, teachers]);
+
   return (
     <div>
       <PageHeader
@@ -261,15 +531,16 @@ function ClassesTab({ classes, users, teachers, onOpenClass }) {
         subtitle={`${classes.length}টি ক্লাস`}
         actions={
           <>
-            {classes.length > 0 && <IconButton icon={Upload} label="শিক্ষার্থী যোগ" onClick={() => setImporting(true)} />}
-            <IconButton icon={Plus} label="নতুন ক্লাস" onClick={() => setEditing({})} />
+            {classes.length > 0 && <IconButton icon={Upload} label="শিক্ষার্থী যোগ" onClick={onOpenImport} />}
+            <IconButton icon={Plus} label="নতুন ক্লাস" onClick={() => onEditClass({})} />
           </>
         }
       />
+
       {classes.length > 0 && (
         <button
           type="button"
-          onClick={() => setImporting(true)}
+          onClick={onOpenImport}
           className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-card ring-1 ring-slate-200/70"
         >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
@@ -282,21 +553,94 @@ function ClassesTab({ classes, users, teachers, onOpenClass }) {
           <ChevronRight className="h-5 w-5 text-slate-300" />
         </button>
       )}
-      <Sheet open={importing} onClose={() => setImporting(false)} full title="শিক্ষার্থী যোগ" subtitle="সরাসরি ক্লাসের ইনচার্জের তালিকায় যাবে">
-        {importing && <StudentImport classes={classes} onDone={() => setImporting(false)} />}
-      </Sheet>
+
+      {classes.length > 0 && (
+        <div className="space-y-2.5 pb-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ক্লাস খুঁজুন (নাম, কোড, শাখা, ইনচার্জ)..."
+              className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card ring-1 ring-inset ring-slate-200/80 outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleFilter('all')}
+              className={cx('press rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition', filter === 'all' ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}
+            >
+              সব ({classes.length})
+            </button>
+            {noInchargeCount > 0 && (
+              <button
+                type="button"
+                onClick={() => handleFilter('noIncharge')}
+                className={cx('press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition', filter === 'noIncharge' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200')}
+              >
+                ইনচার্জ নেই ({noInchargeCount})
+              </button>
+            )}
+            {noAttCount > 0 && (
+              <button
+                type="button"
+                onClick={() => handleFilter('noAttendance')}
+                className={cx('press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition', filter === 'noAttendance' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200')}
+              >
+                হাজিরা বাকি ({noAttCount})
+              </button>
+            )}
+            {overdueCount > 0 && (
+              <button
+                type="button"
+                onClick={() => handleFilter('overdue')}
+                className={cx('press inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-semibold transition', filter === 'overdue' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200')}
+              >
+                বকেয়া আছে ({overdueCount})
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {classes.length === 0 ? (
-        <EmptyState icon={School} title="কোনো ক্লাস নেই" action={<Button icon={Plus} onClick={() => setEditing({})}>নতুন ক্লাস</Button>} />
+        <EmptyState icon={School} title="কোনো ক্লাস নেই" action={<Button icon={Plus} onClick={() => onEditClass({})}>নতুন ক্লাস</Button>} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          icon={School}
+          title="কোনো ক্লাস পাওয়া যায়নি"
+          text="অনুসন্ধান বা ফিল্টারের সাথে মিলছে না"
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setQuery('');
+                handleFilter('all');
+              }}
+            >
+              ফিল্টার রিসেট
+            </Button>
+          }
+        />
       ) : (
         <div className={CARD_GRID}>
-          {classes.map((c) => (
-            <ClassCard key={c.id} c={c} teacher={teachers.find((t) => t.id === c.inchargeUid)} onOpen={() => onOpenClass(c.id)} onEdit={() => setEditing(c)} />
+          {list.map((c) => (
+            <ClassCard key={c.id} c={c} teacher={teachers.find((t) => t.id === c.inchargeUid)} onOpen={() => onOpenClass(c.id)} onEdit={() => onEditClass(c)} />
           ))}
         </div>
       )}
-      <Sheet open={!!editing} onClose={() => setEditing(null)} full title={editing?.id ? 'ক্লাস সম্পাদনা' : 'নতুন ক্লাস'} subtitle={editing?.id || 'ক্লাস তৈরি করে ইনচার্জ ঠিক করুন'}>
-        {editing && <ClassForm cls={editing.id ? editing : null} classes={classes} users={users} teachers={teachers} onDone={() => setEditing(null)} />}
-      </Sheet>
     </div>
   );
 }
@@ -313,36 +657,79 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
 
+  const pickPresetName = (name) => {
+    setF((x) => {
+      const next = { ...x, name };
+      if (!cls && (!x.code || x.code === suggestClassCode(x.name, x.section, x.session))) {
+        next.code = suggestClassCode(name, x.section, x.session);
+      }
+      return next;
+    });
+  };
+
+  const pickPresetSection = (section) => {
+    setF((x) => {
+      const next = { ...x, section };
+      if (!cls && (!x.code || x.code === suggestClassCode(x.name, x.section, x.session))) {
+        next.code = suggestClassCode(x.name, section, x.session);
+      }
+      return next;
+    });
+  };
+
   const save = async () => {
     const code = String(f.code).trim().toUpperCase();
     const e = {};
-    if (!cls) {
+    const renaming = cls && code !== cls.id;
+    if (!cls || renaming) {
       if (!/^[A-Z0-9][A-Z0-9-]{1,18}[A-Z0-9]$/.test(code)) e.code = 'ইংরেজি বড় হাতের অক্ষর, সংখ্যা ও - (যেমন XI-2026)';
       else if (classes.some((c) => c.id === code)) e.code = 'এই কোড আগেই আছে';
     }
     if (!String(f.name).trim()) e.name = 'ক্লাসের নাম দিন';
     setErr(e);
     if (Object.keys(e).length) return;
+    if (renaming) {
+      const ok = await confirm({
+        title: `কোড ${cls.id} → ${code}?`,
+        message: `এই ক্লাসের সব তথ্য নতুন কোডে সরানো হবে এবং স্টুডেন্ট আইডি হবে ${code}-0101 ধরনের। শিক্ষার্থীরা আগের মতোই রোল + পিন দিয়ে ঢুকবে। আগের রশিদ নম্বর বদলাবে না।`,
+        confirmText: 'কোড বদলান',
+        icon: Pencil,
+      });
+      if (!ok) return;
+    }
     setBusy(true);
-    const id = cls ? cls.id : code;
+    if (renaming) {
+      try {
+        await renameClassCode({ classes, users, oldCode: cls.id, newCode: code });
+      } catch (er) {
+        toast(errorText(er), 'error');
+        setBusy(false);
+        return;
+      }
+    }
+    const id = code;
     const settings = {
       ...DEFAULT_CLASS_SETTINGS,
       ...(cls?.settings || {}),
       defaultMonthlyFee: Number(f.defaultMonthlyFee),
       defaultFeeDeadlineDay: Number(f.defaultFeeDeadlineDay),
       fixedFineAfterDeadline: Number(f.fixedFineAfterDeadline),
+      feeStartMonth: f.feeStartMonth || '',
     };
     const base = { code: id, name: f.name.trim(), section: f.section.trim(), session: f.session.trim(), settings };
     const ops = cls
       ? [{ type: 'merge', path: ['classes', id], data: base }]
       : [{ type: 'set', path: ['classes', id], data: { ...base, inchargeUid: null, inchargeName: '', inchargePhone: '', inchargeEmail: '', inchargeDesignation: '', createdAt: new Date().toISOString() } }];
-    const classesAfter = cls ? classes : [...classes, { id, inchargeUid: null }];
+    // After a code change the lists still hold the old code — point them at the new one
+    const renamedClasses = renaming ? classes.map((c) => (c.id === cls.id ? { ...c, id: code } : c)) : classes;
+    const renamedUsers = renaming ? users.map((u) => (u.classId === cls.id ? { ...u, classId: code } : u)) : users;
+    const classesAfter = cls ? renamedClasses : [...classes, { id, inchargeUid: null }];
     if ((f.inchargeUid || null) !== (cls?.inchargeUid || null)) {
-      ops.push(...assignOps({ classes: classesAfter, users, classCode: id, uid: f.inchargeUid || null }));
+      ops.push(...assignOps({ classes: classesAfter, users: renamedUsers, classCode: id, uid: f.inchargeUid || null }));
     }
     try {
-      await backend.write(ops, { wait: !cls });
-      toast(cls ? 'ক্লাস আপডেট হয়েছে' : `${base.name} তৈরি হয়েছে`);
+      await backend.write(ops, { wait: !cls || renaming });
+      toast(renaming ? `ক্লাস কোড এখন ${code}` : cls ? 'ক্লাস আপডেট হয়েছে' : `${base.name} তৈরি হয়েছে`);
       onDone();
     } catch (er) {
       toast(errorText(er), 'error');
@@ -379,15 +766,29 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       </Field>
       <div className="-mt-2 flex flex-wrap gap-1.5">
         {CLASS_PRESETS.map((p) => (
-          <button key={p} type="button" onClick={() => setF((x) => ({ ...x, name: p }))} className={cx('press rounded-full px-3 py-1.5 text-[13px] font-semibold', f.name === p ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}>
+          <button key={p} type="button" onClick={() => pickPresetName(p)} className={cx('press rounded-full px-3 py-1.5 text-[13px] font-semibold', f.name === p ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}>
             {p}
           </button>
         ))}
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="শাখা / বিভাগ">
-          <Input value={f.section} onChange={set('section')} placeholder="যেমন বিজ্ঞান - ক" />
-        </Field>
+        <div>
+          <Field label="শাখা / বিভাগ">
+            <Input value={f.section} onChange={set('section')} placeholder="যেমন বিজ্ঞান" />
+          </Field>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {SECTION_PRESETS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => pickPresetSection(s)}
+                className={cx('press rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold', f.section === s ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
         <Field label="সেশন">
           <Input value={f.session} onChange={set('session')} placeholder="2026-27" />
         </Field>
@@ -395,9 +796,15 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       <Field
         label="ক্লাস কোড"
         error={err.code}
-        hint={cls ? 'কোড বদলানো যায় না' : 'স্টুডেন্ট আইডির শুরুতে বসবে, যেমন XI-2026 → XI-2026-0105। পরে বদলানো যাবে না।'}
+        hint={
+          cls
+            ? f.code !== cls.id
+              ? 'সংরক্ষণ করলে সব তথ্য নতুন কোডে সরবে; শিক্ষার্থীদের লগইন একই থাকবে'
+              : 'বদলাতে পারেন — স্টুডেন্ট আইডিও সাথে বদলাবে'
+            : 'স্টুডেন্ট আইডির শুরুতে বসবে, যেমন XI-2026 → XI-2026-0105'
+        }
       >
-        <Input value={f.code} disabled={!!cls} onChange={(e) => setF((x) => ({ ...x, code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') }))} placeholder="XI-2026" className="tabular uppercase disabled:opacity-60" />
+        <Input value={f.code} onChange={(e) => setF((x) => ({ ...x, code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') }))} placeholder="XI-2026" className="tabular uppercase disabled:opacity-60" />
       </Field>
 
       <div>
@@ -433,6 +840,9 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
           <Input type="number" inputMode="numeric" value={f.fixedFineAfterDeadline} onChange={set('fixedFineAfterDeadline')} />
         </Field>
       </div>
+      <Field label="বেতন শুরুর মাস" hint="এর আগের মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — বাকি দেখাবে না">
+        <FeeStartSelect value={f.feeStartMonth} onChange={(v) => setF((x) => ({ ...x, feeStartMonth: v }))} />
+      </Field>
 
       {cls && (
         <Button variant="soft-danger" icon={Trash2} block onClick={remove} disabled={busy}>
@@ -465,17 +875,36 @@ const TeacherOption = ({ selected, onClick, title, sub, warn, avatar }) => (
 
 /* ───────────────────────── Teachers ───────────────────────── */
 
-function TeachersTab({ classes, users, teachers }) {
-  const [creating, setCreating] = useState(false);
+function TeachersTab({ classes, users, teachers, institution, onNewTeacher, onTeacherReissued }) {
   const [openId, setOpenId] = useState(null);
-  const [created, setCreated] = useState(null);
   const [filter, setFilter] = useState('all');
-  const list = teachers.filter((t) => (filter === 'all' ? true : filter === 'free' ? !t.classId && t.active !== false : t.active === false));
+  const [query, setQuery] = useState('');
+
+  const q = query.trim().toLowerCase();
+  const list = useMemo(() => {
+    return teachers.filter((t) => {
+      if (filter === 'free' && (t.classId || t.active === false)) return false;
+      if (filter === 'off' && t.active !== false) return false;
+      if (!q) return true;
+      return (
+        String(t.name || '').toLowerCase().includes(q) ||
+        String(t.loginId || '').toLowerCase().includes(q) ||
+        String(t.phone || '').includes(q) ||
+        String(t.email || '').toLowerCase().includes(q) ||
+        String(t.designation || '').toLowerCase().includes(q)
+      );
+    });
+  }, [teachers, filter, q]);
+
   const open = teachers.find((t) => t.id === openId);
 
   return (
     <div>
-      <PageHeader title="শিক্ষক" subtitle={`${teachers.length} জন ইনচার্জ`} actions={<IconButton icon={UserPlus} label="নতুন শিক্ষক" onClick={() => setCreating(true)} />}>
+      <PageHeader
+        title="শিক্ষক"
+        subtitle={`${teachers.length} জন ইনচার্জ`}
+        actions={<IconButton icon={UserPlus} label="নতুন শিক্ষক" onClick={onNewTeacher} />}
+      >
         <SelectPill
           label="দেখান"
           value={filter}
@@ -488,48 +917,111 @@ function TeachersTab({ classes, users, teachers }) {
         />
       </PageHeader>
 
-      {list.length === 0 ? (
-        <EmptyState icon={Users} title="কেউ নেই" text="নতুন শিক্ষকের অ্যাকাউন্ট তৈরি করুন" action={<Button icon={UserPlus} onClick={() => setCreating(true)}>নতুন শিক্ষক</Button>} />
+      {teachers.length > 0 && (
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="শিক্ষক খুঁজুন (নাম, আইডি, মোবাইল)..."
+            className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card ring-1 ring-inset ring-slate-200/80 outline-none focus:ring-2 focus:ring-brand-500"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {teachers.length === 0 ? (
+        <EmptyState icon={Users} title="কেউ নেই" text="নতুন শিক্ষকের অ্যাকাউন্ট তৈরি করুন" action={<Button icon={UserPlus} onClick={onNewTeacher}>নতুন শিক্ষক</Button>} />
+      ) : list.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="কোনো শিক্ষক পাওয়া যায়নি"
+          text="অনুসন্ধান বা ফিল্টারের সাথে মিলছে না"
+          action={
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setQuery('');
+                setFilter('all');
+              }}
+            >
+              ফিল্টার রিসেট
+            </Button>
+          }
+        />
       ) : (
         <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
           {list.map((t) => {
             const cls = classes.find((c) => c.id === t.classId);
             return (
-              <button key={t.id} type="button" onClick={() => setOpenId(t.id)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r">
+              <div
+                key={t.id}
+                onClick={() => setOpenId(t.id)}
+                className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r"
+              >
                 <Avatar name={t.name} seed={t.id} size={46} rounded="rounded-full" />
                 <span className="min-w-0 flex-1">
                   <span className={cx('block truncate text-[15.5px] font-semibold', t.active === false ? 'text-slate-400' : 'text-ink')}>{t.name}</span>
                   <span className="tabular block truncate text-[12.5px] text-slate-500">{t.loginId ? `আইডি ${t.loginId}` : t.email}</span>
                 </span>
                 {t.active === false ? <Badge tone="slate">নিষ্ক্রিয়</Badge> : cls ? <Badge tone="brand">{cls.name}</Badge> : <Badge tone="amber">ক্লাস নেই</Badge>}
+                {t.phone && (
+                  <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <a
+                      href={`tel:${t.phone}`}
+                      className="grid h-8 w-8 place-items-center rounded-xl bg-slate-50 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                      title="কল করুন"
+                      aria-label="কল করুন"
+                    >
+                      <Phone className="h-3.5 w-3.5" />
+                    </a>
+                    <a
+                      href={waLink(t.phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                      title="WhatsApp"
+                      aria-label="WhatsApp"
+                    >
+                      <WhatsAppIcon className="h-4 w-4" />
+                    </a>
+                  </div>
+                )}
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-              </button>
+              </div>
             );
           })}
         </Card>
       )}
 
-      <Sheet open={creating} onClose={() => setCreating(false)} full title="নতুন শিক্ষক" subtitle="লগইনের জন্য অ্যাকাউন্ট তৈরি হবে">
-        {creating && (
-          <TeacherForm
+      <Sheet open={!!open} onClose={() => setOpenId(null)} full title={open?.name} subtitle={open?.loginId ? `লগইন আইডি ${open.loginId}` : open?.email}>
+        {open && (
+          <TeacherDetail
+            t={open}
             classes={classes}
             users={users}
-            onDone={(info) => {
-              setCreating(false);
-              if (info) setTimeout(() => setCreated(info), 80);
+            institution={institution}
+            onClose={() => setOpenId(null)}
+            onReissued={(info) => {
+              setOpenId(null);
+              onTeacherReissued?.(info);
             }}
           />
         )}
       </Sheet>
-      <Sheet open={!!created} onClose={() => setCreated(null)} title="অ্যাকাউন্ট তৈরি হয়েছে" subtitle="লগইন তথ্য শিক্ষককে জানিয়ে দিন">
-        {created && <LoginInfo info={created} />}
-      </Sheet>
-      <Sheet open={!!open} onClose={() => setOpenId(null)} full title={open?.name} subtitle={open?.loginId ? `লগইন আইডি ${open.loginId}` : open?.email}>
-        {open && <TeacherDetail t={open} classes={classes} users={users} onClose={() => setOpenId(null)} />}
-      </Sheet>
     </div>
   );
 }
+
 
 function TeacherForm({ classes, users, onDone }) {
   const { toast } = useUI();
@@ -686,12 +1178,25 @@ function LoginInfo({ info }) {
   );
 }
 
-function TeacherDetail({ t, classes, users, onClose }) {
+function TeacherDetail({ t, classes, users, institution, onClose, onReissued }) {
   const { toast, confirm } = useUI();
   const [f, setF] = useState({ name: t.name || '', phone: t.phone || '', designation: t.designation || '' });
-  const [newPw, setNewPw] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const cls = classes.find((c) => c.id === t.classId);
+
+  const shareText = `আসসালামু আলাইকুম ${t.name} স্যার/ম্যাডাম,\n${institution?.name ? `${institution.name}-এর ` : ''}ইনচার্জ পোর্টাল তথ্য:\nলগইন আইডি: ${t.loginId || t.email}\nপোর্টাল লিংক: ${window.location.origin}${cls ? `\nদায়িত্বপ্রাপ্ত ক্লাস: ${cls.name}` : ''}\n\nযেকোনো প্রয়োজনে যোগাযোগ করবেন।`;
+
+  const copyShare = async () => {
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopiedLink(true);
+      toast('লগইন লিংক ও আইডি কপি হয়েছে');
+      setTimeout(() => setCopiedLink(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const saveInfo = async () => {
     const ops = [{ type: 'merge', path: ['users', t.id], data: f }];
@@ -722,19 +1227,55 @@ function TeacherDetail({ t, classes, users, onClose }) {
   };
 
   const hasRecovery = !isStaffEmail(t.email);
-  const resetPw = async () => {
+  const [busy, setBusy] = useState(false);
+
+  // Teachers with a login ID: new 6-digit password, same ID (works on the free Firebase plan)
+  const reissue = async () => {
+    const ok = await confirm({
+      title: `${t.loginId}-এর নতুন পাসওয়ার্ড?`,
+      message: 'আগের পাসওয়ার্ড আর কাজ করবে না। আইডি একই থাকবে, ক্লাসের দায়িত্বও থাকবে। প্রথম লগইনে শিক্ষককে নিজের পাসওয়ার্ড দিতে হবে।',
+      confirmText: 'নতুন পাসওয়ার্ড তৈরি',
+      icon: KeyRound,
+    });
+    if (!ok) return;
+    setBusy(true);
     try {
-      if (isLocal) {
-        const pw = generateStaffPassword();
-        await backend.setPassword(t.email, pw);
-        await backend.write([{ type: 'merge', path: ['users', t.id], data: { mustChangePassword: true } }]);
-        setNewPw(pw);
-      } else {
-        await backend.resetPassword(t.email);
-        toast(`${t.email} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
-      }
+      const info = await reissueTeacherLogin(t);
+      toast(`${t.loginId}: নতুন পাসওয়ার্ড তৈরি হয়েছে`);
+      onReissued?.({ ...info, reissued: true, className: cls?.name });
     } catch (e) {
       toast(errorText(e), 'error');
+      setBusy(false);
+    }
+  };
+
+  // Older email-based accounts: reset link to that email
+  const resetPw = async () => {
+    try {
+      await backend.resetPassword(t.email);
+      toast(`${t.email} এ পাসওয়ার্ড বদলানোর লিংক পাঠানো হয়েছে`);
+    } catch (e) {
+      toast(errorText(e), 'error');
+    }
+  };
+
+  const remove = async () => {
+    const ok = await confirm({
+      title: `${t.name}-এর অ্যাকাউন্ট মুছবেন?`,
+      message: `${t.loginId ? `আইডি ${t.loginId} দিয়ে আর লগইন করা যাবে না। ` : ''}${cls ? `ক্লাসের দায়িত্ব (${cls.name}) খালি হবে; ক্লাসের সব তথ্য থাকবে। ` : ''}এটি ফেরানো যাবে না।`,
+      confirmText: 'মুছে ফেলুন',
+      tone: 'danger',
+      icon: Trash2,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await deleteTeacher({ t, classes, users });
+      toast('শিক্ষকের অ্যাকাউন্ট মুছে ফেলা হয়েছে');
+      onClose();
+    } catch (e) {
+      toast(errorText(e), 'error');
+      setBusy(false);
     }
   };
 
@@ -747,11 +1288,43 @@ function TeacherDetail({ t, classes, users, onClose }) {
           {cls && <Badge tone="brand">{cls.name}</Badge>}
         </div>
         {t.phone && (
-          <a href={`tel:${t.phone}`} className="mt-3 inline-flex items-center gap-1.5 text-[14px] font-semibold text-brand-600">
-            <Phone className="h-4 w-4" /> {t.phone}
-          </a>
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <a href={`tel:${t.phone}`} className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 py-1.5 text-[13.5px] font-semibold text-slate-700 hover:bg-slate-200">
+              <Phone className="h-4 w-4" /> {t.phone}
+            </a>
+            <a href={waLink(t.phone)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-[13.5px] font-semibold text-emerald-700 hover:bg-emerald-100">
+              <WhatsAppIcon className="h-4 w-4" /> WhatsApp
+            </a>
+          </div>
         )}
       </div>
+
+      {/* Share Login Info & Portal Link */}
+      <section className="space-y-2.5 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200/80">
+        <div className="flex items-center justify-between">
+          <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-ink">
+            <IdCard className="h-4 w-4 text-brand-600" /> লগইন আইডি ও পোর্টাল লিংক
+          </p>
+          <span className="tabular text-[13px] font-extrabold text-brand-700">{t.loginId || 'ইমেইল'}</span>
+        </div>
+        <p className="text-[12.5px] leading-relaxed text-slate-500">
+          শিক্ষককে পোর্টালের লিংক ও তার লগইন আইডি পাঠাতে নিচের বাটন ব্যবহার করুন:
+        </p>
+        <div className="grid grid-cols-2 gap-2 pt-0.5">
+          <Button variant="secondary" size="sm" icon={copiedLink ? Check : Copy} onClick={copyShare}>
+            {copiedLink ? 'কপি হয়েছে' : 'কপি করুন'}
+          </Button>
+          {t.phone ? (
+            <Button as="a" href={waLink(t.phone, shareText)} target="_blank" rel="noopener noreferrer" variant="success" size="sm">
+              <WhatsAppIcon className="h-4 w-4" /> WhatsApp
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => toast('শিক্ষকের মোবাইল নম্বর নেই', 'error')}>
+              WhatsApp
+            </Button>
+          )}
+        </div>
+      </section>
 
       {t.active !== false && (
         <section>
@@ -806,19 +1379,23 @@ function TeacherDetail({ t, classes, users, onClose }) {
           {hasRecovery ? `রিকভারি ইমেইল: ${t.email}` : 'রিকভারি ইমেইল নেই — শিক্ষক মেনু থেকে নিজে যোগ করতে পারবেন।'}
           {t.mustChangePassword ? ' · এখনো প্রথম পাসওয়ার্ড বদলানো হয়নি' : ''}
         </p>
-        {(isLocal || hasRecovery) && (
-          <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
-            {isLocal ? 'নতুন পাসওয়ার্ড দিন' : 'পাসওয়ার্ড রিসেট লিংক পাঠান'}
+        {t.loginId ? (
+          <Button variant="secondary" icon={KeyRound} block disabled={busy} onClick={reissue}>
+            নতুন পাসওয়ার্ড তৈরি করুন
           </Button>
+        ) : (
+          hasRecovery && (
+            <Button variant="secondary" icon={KeyRound} block onClick={resetPw}>
+              পাসওয়ার্ড রিসেট লিংক পাঠান
+            </Button>
+          )
         )}
-        {!isLocal && !hasRecovery && (
-          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-[13px] leading-relaxed text-amber-800">
-            পাসওয়ার্ড ভুলে গেলে: নতুন শিক্ষক অ্যাকাউন্ট (নতুন আইডি) তৈরি করে ক্লাসের দায়িত্ব সেখানে দিন, তারপর এই অ্যাকাউন্ট নিষ্ক্রিয় করুন। ক্লাসের সব তথ্য ঠিক থাকবে।
-          </p>
-        )}
-        {newPw && <LoginInfo info={{ ...t, password: newPw, className: cls?.name }} />}
-        <Button variant={t.active === false ? 'soft-success' : 'soft-danger'} icon={Power} block onClick={toggleActive}>
+        <p className="px-1 text-[12.5px] text-slate-500">পাসওয়ার্ড ভুলে গেলে "নতুন পাসওয়ার্ড তৈরি করুন" — আইডি একই থাকবে।</p>
+        <Button variant={t.active === false ? 'soft-success' : 'secondary'} icon={Power} block disabled={busy} onClick={toggleActive}>
           {t.active === false ? 'অ্যাকাউন্ট চালু করুন' : 'অ্যাকাউন্ট নিষ্ক্রিয় করুন'}
+        </Button>
+        <Button variant="soft-danger" icon={Trash2} block disabled={busy} onClick={remove}>
+          অ্যাকাউন্ট মুছে ফেলুন
         </Button>
       </section>
     </div>
@@ -829,7 +1406,7 @@ function TeacherDetail({ t, classes, users, onClose }) {
 
 function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
   const { updateMyProfile } = useAuth();
-  const { toast, confirm } = useUI();
+  const { toast } = useUI();
   const [inst, setInst] = useState({ name: institution?.name || '', address: institution?.address || '' });
   const [me, setMe] = useState({ name: profile?.name || '', phone: profile?.phone || '' });
   const [counter, setCounter] = useState(undefined);

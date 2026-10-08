@@ -3,9 +3,10 @@ import { Upload, FileDown, ClipboardPaste, CheckCircle2, AlertTriangle, Users, K
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { backend, errorText } from '../../backend';
-import { Button, Field, Input, Textarea, Badge, Segmented, cx } from '../../components/ui';
-import { EN_MONTHS, GENDERS, downloadCSV, todayISO } from '../../lib/format';
+import { Button, Field, Input, Textarea, Badge, Segmented, PaidAtAdmission, cx } from '../../components/ui';
+import { EN_MONTHS, GENDERS, downloadCSV, todayISO, monthBn } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
+import { isBeforeFeeStart, feeStartLabel, admissionPaidDefault } from '../../lib/classLogic';
 
 /** The whole institution's list at once; each student lands in their class */
 function ListImport({ classes, onDone }) {
@@ -18,6 +19,7 @@ function ListImport({ classes, onDone }) {
   const [result, setResult] = useState(null); // { plan, errors, unknownHeaders }
   const [created, setCreated] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [paidAtAdmission, setPaidAtAdmission] = useState(true);
 
   const onFile = async (e) => {
     const f = e.target.files?.[0];
@@ -47,7 +49,9 @@ function ListImport({ classes, onDone }) {
           existing[c.id] = await backend.getCollection(['classes', c.id, 'students']);
         }),
       );
-      setResult(planImport(rows, { classes, existing, defaultClass }));
+      const planned = planImport(rows, { classes, existing, defaultClass });
+      setResult(planned);
+      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth)));
       setStep('preview');
     } catch (e) {
       toast(errorText(e), 'error');
@@ -63,7 +67,7 @@ function ListImport({ classes, onDone }) {
     setBusy(true);
     try {
       const now = new Date();
-      const { ops, created: list } = buildImportOps(result.plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear() });
+      const { ops, created: list } = buildImportOps(result.plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear(), paidAtAdmission });
       await backend.write(ops, { wait: true });
       setCreated(list);
       setStep('done');
@@ -166,6 +170,22 @@ function ListImport({ classes, onDone }) {
           <p className="text-[12.5px] text-slate-500">এই কলামগুলো চেনা যায়নি, তাই বাদ: {result.unknownHeaders.join(', ')}</p>
         )}
 
+        {(() => {
+          // Before the fee start month (for every class in this list): admission month already paid
+          const now = new Date();
+          const starts = result.plan.map((g) => g.cls.settings?.feeStartMonth || '');
+          const allBefore = starts.length > 0 && starts.every((fs) => isBeforeFeeStart(EN_MONTHS[now.getMonth()], now.getFullYear(), fs));
+          return (
+            <PaidAtAdmission
+              checked={paidAtAdmission}
+              onChange={setPaidAtAdmission}
+              month={monthBn(EN_MONTHS[now.getMonth()])}
+              beforeStart={allBefore}
+              startLabel={feeStartLabel(starts[0])}
+            />
+          );
+        })()}
+
         <div className="grid grid-cols-[auto_1fr] gap-2">
           <Button variant="secondary" icon={ArrowLeft} onClick={() => setStep('input')}>
             ফিরুন
@@ -267,6 +287,7 @@ function SingleStudentForm({ classes }) {
   const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : ''));
   const [last, setLast] = useState(null); // the student just added (to show their PIN)
   const [showPin, setShowPin] = useState(false);
   const set = (k) => (e) => {
@@ -279,7 +300,10 @@ function SingleStudentForm({ classes }) {
   const sections = cls?.settings?.sections ?? [];
   const useGender = cls?.settings?.useGender !== false;
 
-  const pickClass = (code) => setF((x) => ({ ...blankForm(code), gender: x.gender }));
+  const pickClass = (code) => {
+    setF((x) => ({ ...blankForm(code), gender: x.gender }));
+    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth));
+  };
 
   const save = async () => {
     if (!cls) return setErr('ক্লাস বাছুন');
@@ -295,7 +319,7 @@ function SingleStudentForm({ classes }) {
       if (errors.length) throw Object.assign(new Error(errors[0].msg), { code: 'form' });
       if (plan[0]?.skipped.length) throw Object.assign(new Error(`রোল ${f.roll} এই ক্লাসে আগে থেকেই আছে`), { code: 'form' });
       const now = new Date();
-      const { ops, created } = buildImportOps(plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear() });
+      const { ops, created } = buildImportOps(plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear(), paidAtAdmission });
       await backend.write(ops, { wait: true });
       setLast(created[0]);
       setShowPin(false);
@@ -396,6 +420,14 @@ function SingleStudentForm({ classes }) {
       <Field label="পোর্টাল পিন" hint="খালি রাখলে আপনাআপনি তৈরি হবে">
         <Input inputMode="numeric" maxLength={6} value={f.pin} onChange={(e) => set('pin')(e.target.value.replace(/\D/g, ''))} className="tabular tracking-[0.3em]" />
       </Field>
+
+      <PaidAtAdmission
+        checked={paidAtAdmission}
+        onChange={setPaidAtAdmission}
+        month={monthBn(EN_MONTHS[new Date().getMonth()])}
+        beforeStart={!!cls && isBeforeFeeStart(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth)}
+        startLabel={feeStartLabel(cls?.settings?.feeStartMonth)}
+      />
 
       {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
 
