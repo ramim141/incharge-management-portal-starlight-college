@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { LogOut, UserX, School, Settings2, KeyRound, Mail } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -13,18 +13,20 @@ import { StudentDetailSheet, StudentFormSheet } from './components/StudentSheets
 import { ForcePasswordChange, AccountSheet } from './components/AccountSheets';
 import { InstallPrompt } from './components/InstallPrompt';
 import { Button, Logo } from './components/ui';
-import { StudentPortal } from './views/StudentPortal';
-import { AdminLogin } from './views/AdminLogin';
-import { PrincipalApp } from './views/principal/PrincipalApp';
-import { AdminDashboard } from './views/AdminDashboard';
-import { StudentsView } from './views/StudentsView';
-import { AttendanceView } from './views/AttendanceView';
-import { FeesView } from './views/FeesView';
-import { PaymentsView } from './views/PaymentsView';
-import { DueStudentsView } from './views/DueStudentsView';
-import { ExamFineView } from './views/ExamFineView';
-import { ReportsView } from './views/ReportsView';
-import { SettingsView } from './views/SettingsView';
+
+// Lazy-loaded views for code splitting
+const StudentPortal = lazy(() => import('./views/StudentPortal').then((m) => ({ default: m.StudentPortal })));
+const AdminLogin = lazy(() => import('./views/AdminLogin').then((m) => ({ default: m.AdminLogin })));
+const PrincipalApp = lazy(() => import('./views/principal/PrincipalApp').then((m) => ({ default: m.PrincipalApp })));
+const AdminDashboard = lazy(() => import('./views/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const StudentsView = lazy(() => import('./views/StudentsView').then((m) => ({ default: m.StudentsView })));
+const AttendanceView = lazy(() => import('./views/AttendanceView').then((m) => ({ default: m.AttendanceView })));
+const FeesView = lazy(() => import('./views/FeesView').then((m) => ({ default: m.FeesView })));
+const PaymentsView = lazy(() => import('./views/PaymentsView').then((m) => ({ default: m.PaymentsView })));
+const DueStudentsView = lazy(() => import('./views/DueStudentsView').then((m) => ({ default: m.DueStudentsView })));
+const ExamFineView = lazy(() => import('./views/ExamFineView').then((m) => ({ default: m.ExamFineView })));
+const ReportsView = lazy(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
+const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 
 const VIEWS = {
   dashboard: AdminDashboard,
@@ -97,7 +99,9 @@ function ClassViews() {
   return (
     <>
       <AppShell>
-        <View />
+        <Suspense fallback={<Splash text="লোড হচ্ছে…" />}>
+          <View />
+        </Suspense>
       </AppShell>
       {/* Global sheets — any screen can open these through useUI() */}
       <StudentDetailSheet />
@@ -128,9 +132,21 @@ function Root() {
     await auth.signOut();
   };
 
-  if (view === 'portal') return <StudentPortal onStaffLogin={() => setView('staff')} />;
+  if (view === 'portal') {
+    return (
+      <Suspense fallback={<Splash text="পোর্টাল লোড হচ্ছে…" />}>
+        <StudentPortal onStaffLogin={() => setView('staff')} />
+      </Suspense>
+    );
+  }
   if (auth.status === 'loading') return <Splash />;
-  if (auth.status === 'signedOut') return <AdminLogin onPortal={() => setView('portal')} />;
+  if (auth.status === 'signedOut') {
+    return (
+      <Suspense fallback={<Splash text="লগইন লোড হচ্ছে…" />}>
+        <AdminLogin onPortal={() => setView('portal')} />
+      </Suspense>
+    );
+  }
 
   const p = auth.profile;
   if (!p.role || p.active === false) {
@@ -147,7 +163,11 @@ function Root() {
   if (p.mustChangePassword) return <ForcePasswordChange onSignOut={signOut} />;
 
   if (p.role === 'superadmin' && !visitingClass) {
-    return <PrincipalApp onOpenClass={setVisitingClass} onOpenPortal={() => setView('portal')} onSignOut={signOut} />;
+    return (
+      <Suspense fallback={<Splash text="অধ্যক্ষ ড্যাশবোর্ড লোড হচ্ছে…" />}>
+        <PrincipalApp onOpenClass={setVisitingClass} onOpenPortal={() => setView('portal')} onSignOut={signOut} />
+      </Suspense>
+    );
   }
 
   const classId = p.role === 'superadmin' ? visitingClass : p.classId;

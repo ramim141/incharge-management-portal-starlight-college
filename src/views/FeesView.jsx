@@ -4,7 +4,7 @@ import { ADMISSION_NOTE, BEFORE_START_LABEL, periodOf } from '../lib/classLogic'
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
-import { taka, monthBn, ACADEMIC_MONTHS, EN_MONTHS, FEE_STATUS, feeBadge, feeStatus, daysLate, studentTags } from '../lib/format';
+import { taka, monthBn, EN_MONTHS, feeBadge, feeStatus, daysLate, studentTags } from '../lib/format';
 
 export const REASONS = [
   'আর্থিক সমস্যা',

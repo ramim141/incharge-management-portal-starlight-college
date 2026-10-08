@@ -19,8 +19,9 @@ export function ReceiptSheet() {
   const student = p ? students.find((s) => s.id === p.studentId || s.roll === Number(p.roll)) : null;
   const remaining = student ? calculateStudentTotalDue(student.id) : 0;
 
+  const portalUrl = typeof window !== 'undefined' && p?.roll ? `${window.location.origin}?roll=${p.roll}` : '';
   const shareText = p
-    ? `প্রিয় অভিভাবক,\n${p.studentName} (রোল ${p.roll})-এর ${taka(p.amount)} পরিশোধ সফলভাবে গৃহীত হয়েছে।\nরশিদ নং: ${p.receiptNo}\nতারিখ: ${fmtDate(p.paymentDate)}\nঅবশিষ্ট বকেয়া: ${taka(remaining)}\n\nধন্যবাদ,\n${settings.inchargeName}`
+    ? `প্রিয় অভিভাবক,\n${p.studentName} (রোল ${p.roll})-এর ${taka(p.amount)} পরিশোধ সফলভাবে গৃহীত হয়েছে।\nরশিদ নং: ${p.receiptNo}\nতারিখ: ${fmtDate(p.paymentDate)}\nঅবশিষ্ট বকেয়া: ${taka(remaining)}${portalUrl ? `\n\n🌐 শিক্ষার্থী পোর্টাল:\n${portalUrl}` : ''}\n\nধন্যবাদ,\n${settings.inchargeName}`
     : '';
 
   return (

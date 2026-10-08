@@ -140,3 +140,38 @@ export async function renameClassCode({ classes, users, oldCode, newCode }) {
 }
 
 export const CLASS_PRESETS = ['ষষ্ঠ শ্রেণি', 'সপ্তম শ্রেণি', 'অষ্টম শ্রেণি', 'নবম শ্রেণি', 'দশম শ্রেণি', 'একাদশ শ্রেণি', 'দ্বাদশ শ্রেণি'];
+
+export const SECTION_PRESETS = ['বিজ্ঞান', 'মানবিক', 'ব্যবসায় শিক্ষা', 'ক', 'খ', 'A', 'B'];
+
+export const CLASS_CODE_MAP = {
+  'ষষ্ঠ শ্রেণি': 'VI',
+  'সপ্তম শ্রেণি': 'VII',
+  'অষ্টম শ্রেণি': 'VIII',
+  'নবম শ্রেণি': 'IX',
+  'দশম শ্রেণি': 'X',
+  'একাদশ শ্রেণি': 'XI',
+  'দ্বাদশ শ্রেণি': 'XII',
+};
+
+export const SECTION_CODE_MAP = {
+  'বিজ্ঞান': 'SCI',
+  'মানবিক': 'HUM',
+  'ব্যবসায় শিক্ষা': 'COM',
+  'ক': 'A',
+  'খ': 'B',
+  'গ': 'C',
+  'A': 'A',
+  'B': 'B',
+  'C': 'C',
+};
+
+export function suggestClassCode(name, section, session) {
+  const prefix = CLASS_CODE_MAP[name] || '';
+  const sec = SECTION_CODE_MAP[section] || (section ? section.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) : '');
+  const yearMatch = String(session || '').match(/\d{4}/);
+  const year = yearMatch ? yearMatch[0] : new Date().getFullYear();
+
+  if (prefix && sec) return `${prefix}-${sec}`;
+  if (prefix) return `${prefix}-${year}`;
+  return '';
+}

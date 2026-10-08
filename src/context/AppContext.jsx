@@ -122,7 +122,9 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
 
   const generateWhatsAppMessage = (student) => {
     const fee = currentMonthFees.find((f) => f.studentId === student.id);
-    return String(settings.whatsappTemplate || '')
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const portalUrl = origin ? `${origin}?roll=${student.roll}` : '';
+    let msg = String(settings.whatsappTemplate || '')
       .replace(/\{student_name\}/g, student.name)
       .replace(/\{month\}/g, currentMonth)
       .replace(/\{monthly_fee\}/g, fee?.amount || student.monthlyFee || settings.defaultMonthlyFee)
@@ -131,7 +133,12 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       .replace(/\{incharge_name\}/g, settings.inchargeName)
       .replace(/\{incharge_phone\}/g, settings.inchargePhone || '')
       .replace(/\{class_name\}/g, settings.className)
-      .replace(/\{roll\}/g, student.roll);
+      .replace(/\{roll\}/g, student.roll)
+      .replace(/\{portal_link\}/g, portalUrl);
+    if (portalUrl && !settings.whatsappTemplate?.includes('{portal_link}')) {
+      msg += `\n\n🌐 শিক্ষার্থী পোর্টাল: ${portalUrl}`;
+    }
+    return msg;
   };
 
   const feeRow = (student, month = currentMonth, year = currentYear) => newFeeRow(student, settings, month, year);

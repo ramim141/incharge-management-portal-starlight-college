@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Phone, Pencil, Wallet, Trash2, UserRound, MapPin, CalendarDays, KeyRound, Hash, Users, Eye, EyeOff, ReceiptText,
-  ChevronRight, RefreshCw, Undo2,
+  ChevronRight, RefreshCw, Undo2, Copy,
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
@@ -9,7 +9,7 @@ import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input
 import { WhatsAppIcon } from './ReceiptSheet';
 import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
 import {
-  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, EN_MONTHS, todayISO, FINE_STATUS,
+  taka, monthBn, groupBn, fmtDate, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, EN_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
 
 /* ───────────────────────── Student profile (admin) ───────────────────────── */
@@ -27,7 +27,7 @@ export function StudentDetailSheet() {
 
 function StudentDetail({ student: s }) {
   const {
-    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth, updateStudent,
+    fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats, calculateStudentTotalDue, deleteStudent, absenceFineFor, feeStartMonth, updateStudent, profile,
   } = useApp();
   const { openPayment, openStudentForm, openWhatsApp, openReceipt, openFine, confirm, toast, closeStudent } = useUI();
   const [tab, setTab] = useState('fees');
@@ -88,6 +88,30 @@ function StudentDetail({ student: s }) {
     await updateStudent(s.id, { pin });
     setShowPin(true);
     toast(`নতুন পিন: ${pin}`);
+  };
+
+  const portalUrl = `${window.location.origin}/?roll=${encodeURIComponent(s.roll)}`;
+  const portalShareMessage = [
+    'প্রিয় অভিভাবক,',
+    `${s.name}-এর বেতন, হাজিরা ও রশিদ অনলাইনে দেখতে নিচের লিংকে প্রবেশ করুন:`,
+    portalUrl,
+    '',
+    `ক্লাস: ${settings.className}`,
+    `রোল: ${s.roll}`,
+    `পিন: ${s.pin}`,
+    '',
+    '(পিনটি গোপন রাখুন)',
+    `— ${profile?.name || settings.inchargeName}`,
+    `শ্রেণি ইনচার্জ, ${settings.className} (${settings.institutionName || 'স্টারলাইট কলেজ'})`,
+  ].join('\n');
+
+  const copyPortalInfo = async () => {
+    try {
+      await navigator.clipboard.writeText(portalShareMessage);
+      toast('পোর্টাল লিংক ও পিন কপি হয়েছে');
+    } catch {
+      toast('কপি করা যায়নি', 'error');
+    }
   };
 
   const actions = [
@@ -330,27 +354,48 @@ function StudentDetail({ student: s }) {
               <button type="button" onClick={() => setShowPin((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100" aria-label="পিন দেখুন">
                 {showPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
+              {s.guardianPhone && (
+                <Button
+                  as="a"
+                  variant="soft-success"
+                  size="xs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  href={waLink(s.guardianPhone, portalShareMessage)}
+                  icon={WhatsAppIcon}
+                  title="WhatsApp এ পিন পাঠান"
+                >
+                  শেয়ার
+                </Button>
+              )}
               <Button variant="secondary" size="xs" icon={RefreshCw} onClick={newPin}>
                 নতুন পিন
               </Button>
             </div>
           </div>
-          {s.guardianPhone && (
+          <div className="mt-4 flex gap-2">
+            {s.guardianPhone && (
+              <Button
+                as="a"
+                variant="soft-success"
+                className="flex-1"
+                target="_blank"
+                rel="noopener noreferrer"
+                href={waLink(s.guardianPhone, portalShareMessage)}
+              >
+                <WhatsAppIcon className="h-5 w-5" /> পিন ও লিংক পাঠান
+              </Button>
+            )}
             <Button
-              as="a"
-              variant="soft-success"
-              block
-              className="mt-4"
-              target="_blank"
-              rel="noopener noreferrer"
-              href={waLink(
-                s.guardianPhone,
-                `প্রিয় অভিভাবক,\n${s.name}-এর তথ্য (বেতন, হাজিরা, রশিদ) অনলাইনে দেখতে:\n${window.location.origin}\n\nক্লাস: ${settings.className}\nরোল: ${s.roll}\nপিন: ${s.pin}\n\nপিন গোপন রাখুন।\n${settings.inchargeName}\nক্লাস ইনচার্জ, ${settings.className}`,
-              )}
+              type="button"
+              variant="secondary"
+              icon={Copy}
+              className={s.guardianPhone ? '' : 'flex-1'}
+              onClick={copyPortalInfo}
             >
-              <WhatsAppIcon className="h-5 w-5" /> পোর্টালের রোল ও পিন পাঠান
+              কপি
             </Button>
-          )}
+          </div>
           <Button variant="soft-danger" icon={Trash2} block className="mt-2.5" onClick={remove}>
             শিক্ষার্থী মুছে ফেলুন
           </Button>

@@ -62,7 +62,7 @@ function PaymentBody({ initialStudent }) {
       fine: activeFines.reduce((a, fn) => a + fn.due, 0),
       exam: dueExam ? Number(dueExam.due || dueExam.amount) : 0,
     };
-  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee, feeMonths, feeStartMonth]);
+  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee, feeMonths, feeStartMonth, isBeforeStart]);
 
   // Starts on this month (if unpaid); the in-charge adds or removes months
   const defaultMonths = (c) => new Set((c?.months || []).filter((m) => m.current && !m.paid && m.due > 0).map((m) => m.key));

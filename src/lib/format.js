@@ -9,6 +9,8 @@ export const BN_MONTHS = [
   'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর',
 ];
 export const BN_DAYS = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
+export const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
+export const toEnDigits = (s) => String(s ?? '').replace(/[০-৯]/g, (d) => BN_DIGITS.indexOf(d));
 
 // Academic session runs July → June
 export const ACADEMIC_MONTHS = [

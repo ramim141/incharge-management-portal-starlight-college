@@ -3,7 +3,7 @@ import { Printer, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
-import { taka, monthBn, studentTags, fmtDate, todayISO, FEE_STATUS, feeBadge, feeStatus, METHODS, downloadCSV } from '../lib/format';
+import { taka, monthBn, studentTags, fmtDate, todayISO, feeBadge, feeStatus, METHODS, downloadCSV } from '../lib/format';
 
 export const ReportsView = () => {
   const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();

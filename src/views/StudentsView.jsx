@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Download, UserPlus, Users, ChevronRight } from 'lucide-react';
+import { Download, UserPlus, Users, ChevronRight, Phone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SearchBar, FilterButton, Card, RollBadge, Badge, IconButton, EmptyState, Button, cx, CONTAINER, GUTTER } from '../components/ui';
-import { taka, studentTags, downloadCSV, todayISO } from '../lib/format';
+import { WhatsAppIcon } from '../components/ReceiptSheet';
+import { taka, studentTags, downloadCSV, todayISO, waLink } from '../lib/format';
 import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 export const StudentsView = () => {
@@ -94,8 +95,12 @@ export const StudentsView = () => {
       ) : (
         <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
           {filtered.map(({ s, due, att }) => (
-            <button key={s.id} type="button" onClick={() => openStudent(s)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r">
-              <RollBadge roll={s.roll} seed={s.id} size={48} />
+            <div
+              key={s.id}
+              onClick={() => openStudent(s)}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition hover:bg-slate-50/80 active:bg-slate-100/70 md:border-b md:border-slate-100 md:odd:border-r"
+            >
+              <RollBadge roll={s.roll} seed={s.id} size={46} />
               <div className="min-w-0 flex-1">
                 <p className={cx('truncate text-[15.5px] font-semibold', s.status === 'inactive' ? 'text-slate-400' : 'text-ink')}>{s.name}</p>
                 <p className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12.5px] text-slate-500">
@@ -110,9 +115,35 @@ export const StudentsView = () => {
                   </span>
                 </p>
               </div>
-              {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">পরিশোধিত</Badge>}
-              <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-            </button>
+
+              <div className="flex shrink-0 items-center gap-1.5">
+                {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">পরিশোধিত</Badge>}
+
+                {s.guardianPhone && (
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <a
+                      href={`tel:${s.guardianPhone}`}
+                      aria-label="অভিভাবককে কল করুন"
+                      className="press grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-sky-600 hover:bg-sky-100"
+                      title="কল করুন"
+                    >
+                      <Phone className="h-4 w-4" />
+                    </a>
+                    <a
+                      href={waLink(s.guardianPhone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="WhatsApp মেসেজ"
+                      className="press grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
+                      title="WhatsApp"
+                    >
+                      <WhatsAppIcon className="h-4 w-4" />
+                    </a>
+                  </div>
+                )}
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+              </div>
+            </div>
           ))}
         </Card>
       )}

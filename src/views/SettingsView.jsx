@@ -7,7 +7,7 @@ import { useUI } from '../context/UIContext';
 import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, FeeStartSelect, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
 import { todayISO } from '../lib/format';
 
-const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name'];
+const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name', 'portal_link'];
 const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
 const pick = (o) => Object.fromEntries(EDITABLE.map((k) => [k, o[k] ?? '']));
 
@@ -34,7 +34,9 @@ export const SettingsView = () => {
 
   const preview = (() => {
     const s = students[0];
-    if (!s) return form.whatsappTemplate;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const portalUrl = origin ? (s ? `${origin}?roll=${s.roll}` : origin) : '';
+    if (!s) return String(form.whatsappTemplate).replace(/\{portal_link\}/g, portalUrl);
     const fee = fees.find((f) => f.studentId === s.id && f.month === settings.currentMonth);
     return String(form.whatsappTemplate)
       .replace(/\{student_name\}/g, s.name)
@@ -45,7 +47,8 @@ export const SettingsView = () => {
       .replace(/\{incharge_name\}/g, form.inchargeName)
       .replace(/\{incharge_phone\}/g, form.inchargePhone)
       .replace(/\{class_name\}/g, settings.className)
-      .replace(/\{roll\}/g, s.roll);
+      .replace(/\{roll\}/g, s.roll)
+      .replace(/\{portal_link\}/g, portalUrl);
   })();
 
   const backup = () => {

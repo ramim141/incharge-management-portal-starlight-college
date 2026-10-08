@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info, UserMinus } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
-import { studentTags, ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka } from '../lib/format';
+import { WhatsAppIcon } from '../components/ReceiptSheet';
+import { AbsenteeSheet } from '../components/AbsenteeSheet';
+import { studentTags, ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka, toEnDigits } from '../lib/format';
 import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 const STATUS_STYLE = {
@@ -72,6 +74,7 @@ export const AttendanceView = () => {
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [records, setRecords] = useState(() => ({ ...(attendance[todayISO()] || {}) }));
   const [dirty, setDirty] = useState(false);
+  const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
   // How-to popup shown when the page opens, until the teacher ticks "আর দেখাবেন না"
   const [help, setHelp] = useState(() => {
     try {
@@ -85,6 +88,10 @@ export const AttendanceView = () => {
   const active = useMemo(
     () => students.filter((s) => s.status !== 'inactive').sort((a, b) => Number(a.roll) - Number(b.roll)),
     [students],
+  );
+  const absentees = useMemo(
+    () => active.filter((s) => (records[s.id] || 'Present') === 'Absent'),
+    [active, records],
   );
   const list = active.filter((s) => matchStudentFilter(s, filters));
   const saved = !!attendance[date];
@@ -123,6 +130,39 @@ export const AttendanceView = () => {
       return n;
     });
     setDirty(true);
+  };
+
+  const applyQuickAbsentees = () => {
+    const raw = toEnDigits(absentInput).trim();
+    if (!raw) return;
+    const rolls = [...new Set((raw.match(/\d+/g) || []).map(Number))];
+    if (!rolls.length) return;
+
+    const matched = [];
+    const notFound = [];
+    const nextRecords = { ...records };
+
+    rolls.forEach((r) => {
+      const s = active.find((st) => Number(st.roll) === r);
+      if (s) {
+        nextRecords[s.id] = 'Absent';
+        matched.push(r);
+      } else {
+        notFound.push(r);
+      }
+    });
+
+    if (matched.length > 0) {
+      setRecords(nextRecords);
+      setDirty(true);
+      setAbsentInput('');
+      if (navigator.vibrate) navigator.vibrate(12);
+      toast(`${matched.length} জন (রোল ${matched.join(', ')}) অনুপস্থিত চিহ্নিত করা হয়েছে`);
+    }
+
+    if (notFound.length > 0) {
+      toast(`রোল ${notFound.join(', ')} ক্লাসের তালিকায় পাওয়া যায়নি`, 'error');
+    }
   };
 
   const save = async () => {
@@ -211,6 +251,31 @@ export const AttendanceView = () => {
             <FilterButton compact value={filters} defaults={FILTER_DEFAULTS} onChange={setFilters} groups={studentFilterGroups(settings, active)} />
           </div>
 
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyQuickAbsentees();
+            }}
+            className="mt-2.5 flex items-center gap-2 rounded-2xl bg-white p-1.5 pl-3 ring-1 ring-slate-200/80 shadow-card"
+          >
+            <UserMinus className="h-4 w-4 shrink-0 text-rose-500" />
+            <input
+              type="text"
+              value={absentInput}
+              onChange={(e) => setAbsentInput(e.target.value)}
+              placeholder="অনুপস্থিত রোল লিখুন (যেমন: ১০২, ১০৫, ১১২)"
+              className="tabular min-w-0 flex-1 bg-transparent text-[13.5px] font-medium text-ink placeholder:text-slate-400 outline-none"
+            />
+            <Button
+              type="submit"
+              size="xs"
+              variant="soft-danger"
+              disabled={!absentInput.trim()}
+            >
+              অনুপস্থিত করুন
+            </Button>
+          </form>
+
           <Card className="mt-3 divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
             {list.map((s) => {
               const st = statusOf(s.id);
@@ -249,19 +314,38 @@ export const AttendanceView = () => {
           <div
             className={DOCK} style={DOCK_BOTTOM}
           >
-            <div className="flex items-center gap-3 rounded-[22px] bg-ink/95 p-2 pl-4 text-white shadow-2xl backdrop-blur">
+            <div className="flex items-center gap-2 rounded-[22px] bg-ink/95 p-2 pl-4 text-white shadow-2xl backdrop-blur">
               <div className="min-w-0 flex-1">
                 <p className="tabular text-[15px] font-bold">
                   {counts.Present + counts.Late}/{list.length} উপস্থিত · {rate}%
                 </p>
                 <p className="text-[12px] text-white/60">{dirty ? '● সংরক্ষণ করা হয়নি' : saved ? '✓ সংরক্ষিত' : 'এখনো সংরক্ষণ হয়নি'}</p>
               </div>
+              {counts.Absent > 0 && (
+                <Button
+                  size="sm"
+                  variant="soft"
+                  icon={WhatsAppIcon}
+                  onClick={() => setAbsentSheetOpen(true)}
+                  className="bg-rose-500/20 text-rose-200 hover:bg-rose-500/30"
+                  title="অনুপস্থিতদের WhatsApp নোটিফিকেশন"
+                >
+                  জানান ({counts.Absent})
+                </Button>
+              )}
               <Button variant={dirty || !saved ? 'success' : 'dark'} size="sm" icon={Save} onClick={save} className={!dirty && saved ? 'bg-white/10' : ''}>
                 সংরক্ষণ
               </Button>
             </div>
           </div>
           <div className="h-20" />
+
+          <AbsenteeSheet
+            open={absentSheetOpen}
+            onClose={() => setAbsentSheetOpen(false)}
+            date={date}
+            absentStudents={absentees}
+          />
         </>
       ) : (
         <Summary students={active} getStats={getStudentAttendanceStats} onOpen={openStudent} />

@@ -13,7 +13,7 @@ import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
 import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
 import {
-  taka, monthBn, groupBn, fmtDate, feeStatus, ACADEMIC_MONTHS, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
+  taka, monthBn, groupBn, fmtDate, feeStatus, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
 } from '../lib/format';
 import { portalKey } from '../lib/hash';
 
@@ -78,12 +78,13 @@ const fieldCls =
   'tabular h-14 w-full rounded-2xl bg-slate-50 pl-12 pr-4 text-[18px] font-bold text-ink outline-none ring-1 ring-inset ring-slate-200 transition placeholder:text-[15px] placeholder:font-medium placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-brand-500';
 
 function LoginCard({ onSuccess }) {
-  const last = useMemo(readLast, []);
+  const last = useMemo(() => readLast(), []);
+  const urlRoll = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('roll') : null;
   const [classes, setClasses] = useState(null); // public class list (null = still loading)
   const [indexMissing, setIndexMissing] = useState(false);
   const [cls, setCls] = useState(''); // only typed when the public class list isn't available
   const [choices, setChoices] = useState(null); // same roll + PIN found in more than one class
-  const [roll, setRoll] = useState(last.roll ? String(last.roll) : '');
+  const [roll, setRoll] = useState(() => (urlRoll ? String(urlRoll).trim() : last.roll ? String(last.roll) : ''));
   const [pin, setPin] = useState('');
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState('');
