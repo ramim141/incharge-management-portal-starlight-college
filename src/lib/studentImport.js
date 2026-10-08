@@ -1,6 +1,6 @@
 // Bulk student import for the principal: a CSV file or rows pasted from Excel / Google Sheets.
 // Each row goes to the class named in its "class" column (or the class picked on screen).
-import { newStudentRecord, newFeeRow, buildClassSettings, markFeePaid } from './classLogic';
+import { newStudentRecord, newFeeRow, buildClassSettings, markFeePaid, isBeforeFeeStart } from './classLogic';
 import { buildPortalSnapshot } from './portal';
 import { quickHash } from './hash';
 import { setClassLabels } from './format';
@@ -199,22 +199,24 @@ export function buildImportOps(plan, { institution, month, year, paidAtAdmission
     }
     g.students.forEach(({ input }) => {
       const student = newStudentRecord(input, g.cls.id, settings);
-      // Admission-month fee collected together with admission → saved as already paid
-      const fee = paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
+      // Before the class's fee start month: the admission month was paid with admission, no fee row.
+      // Otherwise the admission-month fee is saved as paid when collected together with admission.
+      const beforeStart = isBeforeFeeStart(settings.currentMonth, settings.currentYear, settings.feeStartMonth);
+      const fee = beforeStart ? null : paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
       const snap = buildPortalSnapshot({
         student,
-        fees: [fee],
+        fees: fee ? [fee] : [],
         examFees: [],
         fines: [],
         payments: [],
         attendance: {},
         settings,
         attStats: { totalClasses: 0, present: 0, absent: 0, late: 0, leave: 0, percentage: 100 },
-        totalDue: fee.due,
+        totalDue: fee ? fee.due : 0,
       });
       const hash = quickHash(JSON.stringify(snap));
       ops.push({ type: 'set', path: ['classes', g.cls.id, 'students', student.id], data: { ...student, portalHash: hash } });
-      ops.push({ type: 'set', path: ['classes', g.cls.id, 'fees', fee.id], data: fee });
+      if (fee) ops.push({ type: 'set', path: ['classes', g.cls.id, 'fees', fee.id], data: fee });
       ops.push({ type: 'set', path: ['portal', student.portalKey], data: { ...snap, classId: g.cls.id, hash, updatedAt: new Date().toISOString() } });
       created.push({ classCode: g.cls.id, className: g.cls.name, roll: student.roll, name: student.name, pin: student.pin, phone: student.guardianPhone });
     });

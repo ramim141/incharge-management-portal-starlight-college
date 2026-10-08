@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { backend, isLocal } from '../backend';
-import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, pad } from '../lib/classLogic';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, pad } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels } from '../lib/format';
 import { newId, portalKey, quickHash } from '../lib/hash';
 import { buildPortalSnapshot } from '../lib/portal';
@@ -15,7 +15,11 @@ export { studentIdFor };
 
 
 // "due" is always derived, so a fee row can never disagree with itself
-const normalizeFee = (f) => {
+const normalizeFee = (f, feeStartMonth) => {
+  // Months before the class's fee start were taken with admission: nothing is owed for them
+  if (isBeforeFeeStart(f.month, f.year, feeStartMonth)) {
+    return { ...f, amount: Number(f.amount || 0), fine: 0, paid: Number(f.paid || 0), due: 0, status: 'Paid', beforeStart: true };
+  }
   const amount = Number(f.amount || 0);
   const fine = Number(f.fine || 0);
   const paid = Number(f.paid || 0);
@@ -62,7 +66,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
 
   /* ───────────── derived data ───────────── */
   const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
-  const fees = useMemo(() => raw.fees.map(normalizeFee), [raw.fees]);
+  const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
+  const fees = useMemo(() => raw.fees.map((f) => normalizeFee(f, feeStartMonth)), [raw.fees, feeStartMonth]);
   const examFees = raw.examFees;
   const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
   const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
@@ -110,7 +115,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const paidCount = currentMonthFees.filter((f) => f.status === 'Paid').length;
   const dueCount = currentMonthFees.filter((f) => feeStatus(f) === 'Due' || feeStatus(f) === 'Partial').length;
   const overdueCount = currentMonthFees.filter((f) => feeStatus(f) === 'Overdue').length;
-  const missingFeeStudents = activeStudents.filter((s) => !currentMonthFees.some((f) => f.studentId === s.id));
+  const currentBeforeStart = isBeforeFeeStart(currentMonth, currentYear, feeStartMonth);
+  const missingFeeStudents = currentBeforeStart ? [] : activeStudents.filter((s) => !currentMonthFees.some((f) => f.studentId === s.id));
 
   const generateWhatsAppMessage = (student) => {
     const fee = currentMonthFees.find((f) => f.studentId === student.id);
@@ -134,10 +140,12 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     const student = newStudentRecord(input, classId, settings);
     const { id } = student;
     const fee = feeRow(student);
-    await write([
-      { type: 'set', path: P('students', id), data: student },
-      { type: 'set', path: P('fees', fee.id), data: paidAtAdmission ? markFeePaid(fee) : fee },
-    ]);
+    const ops = [{ type: 'set', path: P('students', id), data: student }];
+    // Before the fee start month the admission month was paid with admission — no fee row at all
+    if (!isBeforeFeeStart(currentMonth, currentYear, feeStartMonth)) {
+      ops.push({ type: 'set', path: P('fees', fee.id), data: paidAtAdmission ? markFeePaid(fee) : fee });
+    }
+    await write(ops);
     return student;
   };
 
@@ -146,6 +154,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
    * Missing fee rows are created; already-paid rows are left alone. Returns how many changed.
    */
   const markMonthPaid = async (month, year, note = ADMISSION_NOTE) => {
+    if (isBeforeFeeStart(month, year, feeStartMonth)) return 0;
     const ops = [];
     activeStudents.forEach((s) => {
       const row = fees.find((f) => f.studentId === s.id && f.month === month && Number(f.year) === Number(year));
@@ -181,6 +190,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const updateFee = (id, patch) => write([{ type: 'merge', path: P('fees', id), data: patch }]);
 
   const generateMonthFees = async (month = currentMonth, year = currentYear) => {
+    if (isBeforeFeeStart(month, year, feeStartMonth)) return 0;
     const have = new Set(fees.filter((f) => f.month === month && Number(f.year) === Number(year)).map((f) => f.studentId));
     const ops = activeStudents
       .filter((s) => !have.has(s.id))
@@ -284,6 +294,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     // Monthly fees: oldest month first; whatever is left after the last month stays on it (advance)
     const student = students.find((s) => s.id === studentId);
     const monthRows = (feeMonths || [])
+      .filter(({ month, year }) => !isBeforeFeeStart(month, year, feeStartMonth))
       .map(({ month, year }) => {
         const existing = fees.find((f) => f.studentId === studentId && f.month === month && Number(f.year) === Number(year));
         if (existing) return existing;
@@ -347,7 +358,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     return ops.length;
   };
 
-  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
+  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
   const setSettings = async (form) => {
     const rules = Object.fromEntries(RULE_KEYS.map((k) => [k, form[k] ?? settings[k]]));
     const incharge = {
@@ -447,6 +458,8 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     activeStudentsCount: activeStudents.length,
     thisMonthCollection, thisMonthDue, totalDueAcrossAll, paidCount, dueCount, overdueCount,
     missingFeeCount: missingFeeStudents.length,
+    feeStartMonth,
+    isBeforeStart: (month, year) => isBeforeFeeStart(month, year, feeStartMonth),
 
     activeTab, setActiveTab,
 

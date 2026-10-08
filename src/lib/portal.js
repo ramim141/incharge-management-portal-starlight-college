@@ -41,7 +41,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
     },
     fees: fees
       .filter((f) => f.studentId === s.id)
-      .map(({ id, studentId, month, year, amount, fine, paid, due, status, deadline }) => ({ id, studentId, month, year, amount, fine: fine || 0, paid: paid || 0, due, status, deadline: deadline || '' })),
+      .map(({ id, studentId, month, year, amount, fine, paid, due, status, deadline, beforeStart }) => ({ id, studentId, month, year, amount, fine: fine || 0, paid: paid || 0, due, status, deadline: deadline || '', beforeStart: !!beforeStart })),
     exams: examFees
       .filter((e) => e.studentId === s.id)
       .map(({ id, studentId, examName, amount, paid, due, status, paymentDate, deadline }) => ({ id, studentId, examName, amount, paid: paid || 0, due: due || 0, status, paymentDate: paymentDate || null, deadline: deadline || '' })),

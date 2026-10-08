@@ -16,7 +16,7 @@ import { StudentImport } from './StudentImport';
 import { useBackHandler } from '../../lib/backstack';
 import { taka, monthBn, EN_MONTHS, waLink } from '../../lib/format';
 import {
-  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, cx, CONTAINER, GUTTER,
+  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, FeeStartSelect, cx, CONTAINER, GUTTER,
   CARD_GRID, DOCK, DOCK_BOTTOM,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
@@ -350,6 +350,7 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       defaultMonthlyFee: Number(f.defaultMonthlyFee),
       defaultFeeDeadlineDay: Number(f.defaultFeeDeadlineDay),
       fixedFineAfterDeadline: Number(f.fixedFineAfterDeadline),
+      feeStartMonth: f.feeStartMonth || '',
     };
     const base = { code: id, name: f.name.trim(), section: f.section.trim(), session: f.session.trim(), settings };
     const ops = cls
@@ -461,6 +462,9 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
           <Input type="number" inputMode="numeric" value={f.fixedFineAfterDeadline} onChange={set('fixedFineAfterDeadline')} />
         </Field>
       </div>
+      <Field label="বেতন শুরুর মাস" hint="এর আগের মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — বাকি দেখাবে না">
+        <FeeStartSelect value={f.feeStartMonth} onChange={(v) => setF((x) => ({ ...x, feeStartMonth: v }))} />
+      </Field>
 
       {cls && (
         <Button variant="soft-danger" icon={Trash2} block onClick={remove} disabled={busy}>

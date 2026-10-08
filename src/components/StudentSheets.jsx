@@ -7,8 +7,9 @@ import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
+import { feeStartLabel } from '../lib/classLogic';
 import {
-  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
+  taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
 
 /* ───────────────────────── Student profile (admin) ───────────────────────── */
@@ -162,8 +163,8 @@ function StudentDetail({ student: s }) {
                       </p>
                     </div>
                     <div className="text-right">
-                      <Badge tone={FEE_STATUS[st]?.tone} dot>
-                        {FEE_STATUS[st]?.bn}
+                      <Badge tone={feeBadge(f, st).tone} dot>
+                        {feeBadge(f, st).bn}
                       </Badge>
                       {Number(f.due) > 0 && <p className="tabular mt-1 text-[13px] font-bold text-rose-600">{taka(f.due)}</p>}
                     </div>
@@ -346,7 +347,7 @@ export function StudentFormSheet() {
 }
 
 function StudentForm({ editing }) {
-  const { students, settings, addStudent, updateStudent, classId } = useApp();
+  const { students, settings, addStudent, updateStudent, classId, isBeforeStart, feeStartMonth } = useApp();
   const { closeStudentForm, toast, openStudent } = useUI();
   const departments = settings.departments || [];
   const sections = settings.sections || [];
@@ -493,7 +494,15 @@ function StudentForm({ editing }) {
         </Field>
       </FormSection>
 
-      {!editing && <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(settings.currentMonth)} />}
+      {!editing && (
+        <PaidAtAdmission
+          checked={paidAtAdmission}
+          onChange={setPaidAtAdmission}
+          month={monthBn(settings.currentMonth)}
+          beforeStart={isBeforeStart(settings.currentMonth, settings.currentYear)}
+          startLabel={feeStartLabel(feeStartMonth)}
+        />
+      )}
 
       <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
         <Button size="lg" block onClick={save}>

@@ -3,7 +3,7 @@ import { Printer, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
-import { taka, monthBn, studentTags, fmtDate, todayISO, FEE_STATUS, feeStatus, METHODS, downloadCSV } from '../lib/format';
+import { taka, monthBn, studentTags, fmtDate, todayISO, FEE_STATUS, feeBadge, feeStatus, METHODS, downloadCSV } from '../lib/format';
 
 export const ReportsView = () => {
   const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
@@ -182,8 +182,8 @@ export const ReportsView = () => {
                     <span className={cx('tabular block text-[14px] font-bold', Number(f.due) > 0 ? 'text-rose-600' : 'text-emerald-600')}>
                       {Number(f.due) > 0 ? taka(f.due) : taka(f.paid)}
                     </span>
-                    <Badge tone={FEE_STATUS[st]?.tone} className="mt-0.5">
-                      {FEE_STATUS[st]?.bn}
+                    <Badge tone={feeBadge(f, st).tone} className="mt-0.5">
+                      {feeBadge(f, st).bn}
                     </Badge>
                   </span>
                 </button>

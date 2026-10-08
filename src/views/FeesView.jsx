@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { Zap, MessageSquareText, Wallet, CreditCard, CheckCheck, Undo2 } from 'lucide-react';
-import { ADMISSION_NOTE } from '../lib/classLogic';
+import { ADMISSION_NOTE, BEFORE_START_LABEL } from '../lib/classLogic';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
-import { taka, monthBn, ACADEMIC_MONTHS, FEE_STATUS, feeStatus, daysLate, studentTags } from '../lib/format';
+import { taka, monthBn, ACADEMIC_MONTHS, EN_MONTHS, FEE_STATUS, feeBadge, feeStatus, daysLate, studentTags } from '../lib/format';
 
 export const REASONS = [
   'আর্থিক সমস্যা',
@@ -16,7 +16,7 @@ export const REASONS = [
 ];
 
 export const FeesView = () => {
-  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee } = useApp();
+  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth } = useApp();
   const { openPayment, confirm, toast } = useUI();
 
   const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
@@ -41,7 +41,9 @@ export const FeesView = () => {
       (!t || String(f.roll).includes(t) || (s?.name || '').toLowerCase().includes(t) || (s?.nameEn || '').toLowerCase().includes(t)),
   );
 
-  const missing = students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
+  const beforeStart = isBeforeStart(month, year);
+  const missing = beforeStart ? 0 : students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
+  const startLabel = feeStartMonth ? `${monthBn(EN_MONTHS[Number(feeStartMonth.slice(5)) - 1])} ${feeStartMonth.slice(0, 4)}` : '';
   const createMonth = async () => {
     const n = await generateMonthFees(month, year);
     toast(`${monthBn(month)} মাসের বেতন ${n} জনের জন্য তৈরি হয়েছে`);
@@ -103,6 +105,18 @@ export const FeesView = () => {
         <SelectPill label="মাস" value={month} onChange={setMonth} options={ACADEMIC_MONTHS.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
       </PageHeader>
 
+      {beforeStart && (
+        <div className="mb-3 flex items-center gap-3 rounded-3xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+          <CheckCheck className="h-6 w-6 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-bold text-emerald-900">
+              {monthBn(month)}: {BEFORE_START_LABEL}
+            </p>
+            <p className="text-[12.5px] text-emerald-800">মাসিক বেতন নেওয়া শুরু {startLabel} থেকে — এই মাসে কিছু আদায় করতে হবে না</p>
+          </div>
+        </div>
+      )}
+
       {missing > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-3xl bg-brand-50 p-4 ring-1 ring-brand-100">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-600 text-white">
@@ -129,7 +143,7 @@ export const FeesView = () => {
         </Card>
       </div>
 
-      {(due > 0 || missing > 0) && (
+      {!beforeStart && (due > 0 || missing > 0) && (
         <button
           type="button"
           onClick={markAllPaid}
@@ -181,8 +195,8 @@ export const FeesView = () => {
                       {late > 0 && <span className="font-semibold text-rose-600"> · {late} দিন দেরি</span>}
                     </p>
                   </div>
-                  <Badge tone={FEE_STATUS[st]?.tone} dot>
-                    {FEE_STATUS[st]?.bn}
+                  <Badge tone={feeBadge(f, st).tone} dot>
+                    {feeBadge(f, st).bn}
                   </Badge>
                 </div>
 
@@ -192,7 +206,11 @@ export const FeesView = () => {
                   <Amt label="বাকি" value={f.due || 0} cls={Number(f.due) > 0 ? 'text-rose-600' : 'text-emerald-600'} />
                 </div>
 
-                {st === 'Paid' && f.note === ADMISSION_NOTE && (
+                {f.beforeStart && (
+                  <p className="mt-3 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {BEFORE_START_LABEL}</p>
+                )}
+
+                {!f.beforeStart && st === 'Paid' && f.note === ADMISSION_NOTE && (
                   <div className="mt-3 flex items-center gap-2">
                     <p className="min-w-0 flex-1 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {ADMISSION_NOTE}</p>
                     <Button size="sm" variant="secondary" icon={Undo2} onClick={() => undoAdmission(f, s)}>

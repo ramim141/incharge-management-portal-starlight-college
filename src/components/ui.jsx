@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Search, ChevronLeft, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { useBackHandler } from '../lib/backstack';
 import logoUrl from '../assets/images/logo.png';
+import { ACADEMIC_MONTHS, EN_MONTHS, BN_MONTHS } from '../lib/format';
 
 export const cx = (...c) => c.filter(Boolean).join(' ');
 
@@ -105,8 +106,46 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
   );
 }
 
+/** Class setting "বেতন শুরুর মাস": months before it were collected with admission */
+export function FeeStartSelect({ value, onChange }) {
+  const now = new Date();
+  const curIdx = ACADEMIC_MONTHS.indexOf(EN_MONTHS[now.getMonth()]);
+  const sessionStart = curIdx <= 5 ? now.getFullYear() : now.getFullYear() - 1;
+  const options = ACADEMIC_MONTHS.map((m, i) => {
+    const y = i <= 5 ? sessionStart : sessionStart + 1;
+    return { value: `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}`, label: `${BN_MONTHS[EN_MONTHS.indexOf(m)]} ${y}` };
+  });
+  if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: value });
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-12 w-full rounded-2xl bg-slate-50 px-4 text-[16px] font-medium text-ink outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-500"
+    >
+      <option value="">শুরু থেকেই (ভর্তির মাস থেকে)</option>
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label} থেকে
+        </option>
+      ))}
+    </select>
+  );
+}
+
 /** Tick box shown when adding students: the admission-month fee was already collected */
-export function PaidAtAdmission({ checked, onChange, month }) {
+export function PaidAtAdmission({ checked, onChange, month, beforeStart, startLabel }) {
+  // Month before the class's fee start: nothing to choose — it was taken with admission
+  if (beforeStart) {
+    return (
+      <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-inset ring-emerald-200">
+        <Checkbox checked className="mt-0.5" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14.5px] font-semibold text-ink">{month ? `${month}: ` : ''}বেতন ভর্তির সময় নেওয়া হয়েছে</span>
+          <span className="block text-[12.5px] text-slate-500">মাসিক বেতন নেওয়া শুরু {startLabel || 'পরের মাস'} থেকে</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <button
       type="button"

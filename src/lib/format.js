@@ -102,6 +102,9 @@ export const FEE_STATUS = {
   Overdue: { bn: 'মেয়াদোত্তীর্ণ', tone: 'red' },
 };
 
+/** Badge for a fee row: months before the class's fee start read "ভর্তির সময়" (taken with admission) */
+export const feeBadge = (f, st) => (f?.beforeStart ? { bn: 'ভর্তির সময় নেওয়া', tone: 'green' } : FEE_STATUS[st] || FEE_STATUS.Due);
+
 export const FINE_STATUS = {
   Active: { bn: 'বাকি', tone: 'red' },
   Paid: { bn: 'পরিশোধিত', tone: 'green' },

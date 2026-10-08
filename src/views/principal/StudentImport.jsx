@@ -6,6 +6,7 @@ import { backend, errorText } from '../../backend';
 import { Button, Field, Input, Textarea, Badge, Segmented, PaidAtAdmission, cx } from '../../components/ui';
 import { EN_MONTHS, GENDERS, downloadCSV, todayISO, monthBn } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
+import { isBeforeFeeStart, feeStartLabel } from '../../lib/classLogic';
 
 /** The whole institution's list at once; each student lands in their class */
 function ListImport({ classes, onDone }) {
@@ -167,7 +168,21 @@ function ListImport({ classes, onDone }) {
           <p className="text-[12.5px] text-slate-500">এই কলামগুলো চেনা যায়নি, তাই বাদ: {result.unknownHeaders.join(', ')}</p>
         )}
 
-        <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(EN_MONTHS[new Date().getMonth()])} />
+        {(() => {
+          // Before the fee start month (for every class in this list): admission month already paid
+          const now = new Date();
+          const starts = result.plan.map((g) => g.cls.settings?.feeStartMonth || '');
+          const allBefore = starts.length > 0 && starts.every((fs) => isBeforeFeeStart(EN_MONTHS[now.getMonth()], now.getFullYear(), fs));
+          return (
+            <PaidAtAdmission
+              checked={paidAtAdmission}
+              onChange={setPaidAtAdmission}
+              month={monthBn(EN_MONTHS[now.getMonth()])}
+              beforeStart={allBefore}
+              startLabel={feeStartLabel(starts[0])}
+            />
+          );
+        })()}
 
         <div className="grid grid-cols-[auto_1fr] gap-2">
           <Button variant="secondary" icon={ArrowLeft} onClick={() => setStep('input')}>
@@ -401,7 +416,13 @@ function SingleStudentForm({ classes }) {
         <Input inputMode="numeric" maxLength={6} value={f.pin} onChange={(e) => set('pin')(e.target.value.replace(/\D/g, ''))} className="tabular tracking-[0.3em]" />
       </Field>
 
-      <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(EN_MONTHS[new Date().getMonth()])} />
+      <PaidAtAdmission
+        checked={paidAtAdmission}
+        onChange={setPaidAtAdmission}
+        month={monthBn(EN_MONTHS[new Date().getMonth()])}
+        beforeStart={!!cls && isBeforeFeeStart(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth)}
+        startLabel={feeStartLabel(cls?.settings?.feeStartMonth)}
+      />
 
       {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
 

@@ -15,7 +15,7 @@ export function PaymentSheet() {
 }
 
 function PaymentBody({ initialStudent }) {
-  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue } = useApp();
+  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart } = useApp();
   const { closePayment, openReceipt, toast } = useUI();
 
   const [student, setStudent] = useState(initialStudent);
@@ -37,10 +37,12 @@ function PaymentBody({ initialStudent }) {
       const row = own.find((f) => f.month === m && Number(f.year) === y);
       // Months before admission are not owed (unless a fee row was made for them anyway)
       if (!row && admitted && `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}` < admitted) return null;
+      // Taken with admission (before the class's fee start month): shown, never collected
+      const beforeStart = isBeforeStart(m, y);
       return {
-        key: keyOf(m, y), month: m, year: y, row,
-        due: row ? Number(row.due || 0) : rate,
-        paid: row ? feeStatus(row) === 'Paid' : false,
+        key: keyOf(m, y), month: m, year: y, row, beforeStart,
+        due: beforeStart ? 0 : row ? Number(row.due || 0) : rate,
+        paid: beforeStart || (row ? feeStatus(row) === 'Paid' : false),
         future: i > curIdx,
         past: i < curIdx,
         current: i === curIdx,
@@ -228,7 +230,7 @@ function PaymentBody({ initialStudent }) {
               >
                 <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>{monthBn(m.month)}</span>
                 <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
-                  {m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
+                  {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
                 </span>
                 {!m.paid && !on && m.row && (m.past || m.current || Number(m.row.paid) > 0) && (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />

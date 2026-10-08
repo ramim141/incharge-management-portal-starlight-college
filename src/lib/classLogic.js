@@ -1,7 +1,7 @@
 // Pure helpers shared by the in-charge's class screen (AppContext) and the principal's bulk student
 // import, so a student added either way gets exactly the same records.
 import { DEFAULT_CLASS_SETTINGS } from './defaults';
-import { EN_MONTHS } from './format';
+import { EN_MONTHS, BN_MONTHS } from './format';
 import { newId, portalKey } from './hash';
 
 export const pad = (n, w) => String(n).padStart(w, '0');
@@ -49,6 +49,20 @@ export function newFeeRow(student, settings, month = settings.currentMonth, year
     note: '',
   };
 }
+
+/** "2026-11" for November 2026 — how fee months are compared */
+export const periodOf = (month, year) => `${year}-${pad(EN_MONTHS.indexOf(month) + 1, 2)}`;
+
+/**
+ * Class setting `feeStartMonth` ("2026-11"): fees are collected from this month on. Earlier months
+ * were taken with admission — never owed, never collected, labelled "ভর্তির সময় নেওয়া".
+ */
+export const isBeforeFeeStart = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) < feeStartMonth;
+
+export const BEFORE_START_LABEL = 'বেতন ভর্তির সময় নেওয়া হয়েছে';
+
+/** "নভেম্বর 2026" for "2026-11" */
+export const feeStartLabel = (feeStartMonth) => (feeStartMonth ? `${BN_MONTHS[Number(feeStartMonth.slice(5)) - 1]} ${feeStartMonth.slice(0, 4)}` : '');
 
 export const ADMISSION_NOTE = 'ভর্তির সময় আদায়';
 

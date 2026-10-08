@@ -485,7 +485,7 @@ function StudentProfile({ student: s, onExit }) {
                             </p>
                           </div>
                           {paid ? (
-                            <Badge tone="green">পরিশোধিত</Badge>
+                            <Badge tone="green">{f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
                           ) : (
                             <div className="text-right">
                               <Badge tone="red">বাকি</Badge>
