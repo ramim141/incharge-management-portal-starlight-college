@@ -111,10 +111,13 @@ export function FeeStartSelect({ value, onChange }) {
   const now = new Date();
   const curIdx = ACADEMIC_MONTHS.indexOf(EN_MONTHS[now.getMonth()]);
   const sessionStart = curIdx <= 5 ? now.getFullYear() : now.getFullYear() - 1;
-  const options = ACADEMIC_MONTHS.map((m, i) => {
-    const y = i <= 5 ? sessionStart : sessionStart + 1;
-    return { value: `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}`, label: `${BN_MONTHS[EN_MONTHS.indexOf(m)]} ${y}` };
-  });
+  // Previous session too (from July a year back), so a class can start earlier to carry arrears
+  const options = [sessionStart - 1, sessionStart].flatMap((s) =>
+    ACADEMIC_MONTHS.map((m, i) => {
+      const y = i <= 5 ? s : s + 1;
+      return { value: `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}`, label: `${BN_MONTHS[EN_MONTHS.indexOf(m)]} ${y}` };
+    }),
+  );
   if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: value });
   return (
     <select

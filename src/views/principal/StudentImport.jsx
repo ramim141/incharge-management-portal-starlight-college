@@ -6,7 +6,7 @@ import { backend, errorText } from '../../backend';
 import { Button, Field, Input, Textarea, Badge, Segmented, PaidAtAdmission, cx } from '../../components/ui';
 import { EN_MONTHS, GENDERS, downloadCSV, todayISO, monthBn } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
-import { isBeforeFeeStart, feeStartLabel } from '../../lib/classLogic';
+import { isBeforeFeeStart, feeStartLabel, admissionPaidDefault } from '../../lib/classLogic';
 
 /** The whole institution's list at once; each student lands in their class */
 function ListImport({ classes, onDone }) {
@@ -49,7 +49,9 @@ function ListImport({ classes, onDone }) {
           existing[c.id] = await backend.getCollection(['classes', c.id, 'students']);
         }),
       );
-      setResult(planImport(rows, { classes, existing, defaultClass }));
+      const planned = planImport(rows, { classes, existing, defaultClass });
+      setResult(planned);
+      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth)));
       setStep('preview');
     } catch (e) {
       toast(errorText(e), 'error');
@@ -285,7 +287,7 @@ function SingleStudentForm({ classes }) {
   const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [paidAtAdmission, setPaidAtAdmission] = useState(true);
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : ''));
   const [last, setLast] = useState(null); // the student just added (to show their PIN)
   const [showPin, setShowPin] = useState(false);
   const set = (k) => (e) => {
@@ -298,7 +300,10 @@ function SingleStudentForm({ classes }) {
   const sections = cls?.settings?.sections ?? [];
   const useGender = cls?.settings?.useGender !== false;
 
-  const pickClass = (code) => setF((x) => ({ ...blankForm(code), gender: x.gender }));
+  const pickClass = (code) => {
+    setF((x) => ({ ...blankForm(code), gender: x.gender }));
+    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth));
+  };
 
   const save = async () => {
     if (!cls) return setErr('ক্লাস বাছুন');

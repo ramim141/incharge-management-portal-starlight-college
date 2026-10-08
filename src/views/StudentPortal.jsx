@@ -314,7 +314,7 @@ function StudentProfile({ student: s, onExit }) {
       fees
         // Months before the class's fee start were taken with admission — one note instead of rows
         .filter((f) => f.studentId === s.id && !f.beforeStart)
-        .sort((a, b) => a.year - b.year || ACADEMIC_MONTHS.indexOf(a.month) - ACADEMIC_MONTHS.indexOf(b.month)),
+        .sort((a, b) => Number(a.year) - Number(b.year) || EN_MONTHS.indexOf(a.month) - EN_MONTHS.indexOf(b.month)),
     [fees, s.id],
   );
   const sExams = examFees.filter((e) => e.studentId === s.id);
@@ -322,7 +322,7 @@ function StudentProfile({ student: s, onExit }) {
   const sFines = fines.filter((f) => f.studentId === s.id).map(normalizeFine);
 
   // A fee row's "due" already includes its late fine; split it back out for the breakdown
-  const feeFineDue = sFees.reduce((a, f) => a + Math.min(Number(f.fine || 0), Number(f.due || 0)), 0);
+  const feeFineDue = sFees.reduce((a, f) => a + Math.min(Number(f.fine || 0) - Number(f.fineWaived || 0), Number(f.due || 0)), 0);
   const monthlyDue = sFees.reduce((a, f) => a + Number(f.due || 0), 0) - feeFineDue;
   const fineDue = sFines.reduce((a, f) => a + f.due, 0);
   const lateFine = feeFineDue + fineDue;
@@ -488,7 +488,7 @@ function StudentProfile({ student: s, onExit }) {
                             </p>
                             <p className="tabular text-[12.5px] text-slate-500">
                               {taka(f.amount)}
-                              {f.fine ? ` + জরিমানা ${taka(f.fine)}` : ''}
+                              {f.fine ? ` + জরিমানা ${taka(f.fine)}${f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}` : ''}
                             </p>
                           </div>
                           {paid ? (

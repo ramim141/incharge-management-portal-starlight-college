@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Zap, MessageSquareText, Wallet, CreditCard, CheckCheck, Undo2 } from 'lucide-react';
-import { ADMISSION_NOTE, BEFORE_START_LABEL } from '../lib/classLogic';
+import { ADMISSION_NOTE, BEFORE_START_LABEL, periodOf } from '../lib/classLogic';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
@@ -16,22 +16,20 @@ export const REASONS = [
 ];
 
 export const FeesView = () => {
-  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth } = useApp();
+  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth, feeMonths, generateArrears } = useApp();
   const { openPayment, confirm, toast } = useUI();
 
-  const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
-  const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
-
-  // Months before the fee start were taken with admission — the picker starts at the start month
-  const monthOptions = ACADEMIC_MONTHS.filter((m) => !isBeforeStart(m, yearOf(m)));
-  const pickable = monthOptions.length ? monthOptions : ACADEMIC_MONTHS;
-  const [month, setMonth] = useState(() => (pickable.includes(settings.currentMonth) ? settings.currentMonth : pickable[0]));
+  // The class's fee months: from its fee start month (e.g. Jan 2026 for a class with arrears)
+  // through the end of the session; picked by period ("2026-11") since a month name can repeat
+  const curPeriod = periodOf(settings.currentMonth, settings.currentYear);
+  const [period, setPeriod] = useState(() => (feeMonths.some((m) => m.period === curPeriod) ? curPeriod : feeMonths[0]?.period || curPeriod));
+  const picked = feeMonths.find((m) => m.period === period) || { month: settings.currentMonth, year: settings.currentYear };
   const [filters, setFilters] = useState({ status: 'All' });
   const { status } = filters;
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null);
 
-  const year = yearOf(month);
+  const { month, year } = picked;
   const monthFees = fees.filter((f) => f.month.toLowerCase() === month.toLowerCase() && Number(f.year) === year);
   const withStudent = monthFees
     .map((f) => ({ f, s: students.find((x) => x.id === f.studentId || x.roll === Number(f.roll)), st: feeStatus(f) }))
@@ -47,6 +45,22 @@ export const FeesView = () => {
   const beforeStart = isBeforeStart(month, year);
   const missing = beforeStart ? 0 : students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
   const startLabel = feeStartMonth ? `${monthBn(EN_MONTHS[Number(feeStartMonth.slice(5)) - 1])} ${feeStartMonth.slice(0, 4)}` : '';
+  // Months from the fee start up to now that some students have no fee row for yet
+  const arrearsMissing = feeMonths
+    .filter((m) => m.period <= curPeriod && !isBeforeStart(m.month, m.year))
+    .reduce((n, m) => n + students.filter((s) => s.status !== 'inactive' && !fees.some((f) => f.studentId === s.id && f.month === m.month && Number(f.year) === m.year)).length, 0);
+  const createArrears = async () => {
+    const ok = await confirm({
+      title: 'বাকি মাসগুলোর বেতন তৈরি করবেন?',
+      message: `${startLabel || 'শুরু'} থেকে ${monthBn(settings.currentMonth)} ${settings.currentYear} পর্যন্ত যাদের যে মাসের বেতন তৈরি হয়নি, সেগুলো বাকি হিসেবে তৈরি হবে (মোট ${arrearsMissing}টি)।`,
+      confirmText: 'তৈরি করুন',
+      icon: CreditCard,
+    });
+    if (!ok) return;
+    const n = await generateArrears();
+    toast(`${n}টি মাসের বেতন তৈরি হয়েছে`);
+  };
+
   const createMonth = async () => {
     const n = await generateMonthFees(month, year);
     toast(`${monthBn(month)} মাসের বেতন ${n} জনের জন্য তৈরি হয়েছে`);
@@ -105,7 +119,7 @@ export const FeesView = () => {
         subtitle={`${monthBn(month)} ${year} · শেষ তারিখ ${settings.defaultFeeDeadlineDay} ${monthBn(month)}`}
         actions={<IconButton icon={Zap} label="স্বয়ংক্রিয় জরিমানা" onClick={runAutoFine} />}
       >
-        <SelectPill label="মাস" value={month} onChange={setMonth} options={pickable.map((m) => ({ value: m, label: `${monthBn(m)} ${yearOf(m)}` }))} />
+        <SelectPill label="মাস" value={period} onChange={setPeriod} options={feeMonths.map((m) => ({ value: m.period, label: `${monthBn(m.month)} ${m.year}` }))} />
       </PageHeader>
 
       {beforeStart && (
@@ -118,6 +132,20 @@ export const FeesView = () => {
             <p className="text-[12.5px] text-emerald-800">মাসিক বেতন নেওয়া শুরু {startLabel} থেকে — এই মাসে কিছু আদায় করতে হবে না</p>
           </div>
         </div>
+      )}
+
+      {arrearsMissing > 0 && feeMonths.filter((m) => m.period <= curPeriod).length > 1 && (
+        <button type="button" onClick={createArrears} className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-amber-50 p-4 text-left ring-1 ring-amber-100">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-amber-500 text-white">
+            <CreditCard className="h-5 w-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[14.5px] font-bold text-ink">বাকি মাসগুলোর বেতন তৈরি করুন</span>
+            <span className="block text-[12.5px] text-slate-600">
+              {startLabel || 'শুরু'} থেকে এ পর্যন্ত {arrearsMissing}টি মাসের বেতন তৈরি হয়নি
+            </span>
+          </span>
+        </button>
       )}
 
       {missing > 0 && (

@@ -3,7 +3,8 @@ import { ArrowLeftRight, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, SearchBar, RollBadge, Badge, Button, Field, Input, Checkbox, EmptyState, cx } from './ui';
-import { taka, monthBn, studentTags, METHODS, todayISO, ACADEMIC_MONTHS, EN_MONTHS, feeStatus } from '../lib/format';
+import { taka, monthBn, studentTags, METHODS, todayISO, feeStatus } from '../lib/format';
+import { periodOf } from '../lib/classLogic';
 
 export function PaymentSheet() {
   const { payment, closePayment } = useUI();
@@ -15,7 +16,7 @@ export function PaymentSheet() {
 }
 
 function PaymentBody({ initialStudent }) {
-  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart } = useApp();
+  const { students, fees, fines, examFees, settings, recordPayment, calculateStudentTotalDue, isBeforeStart, feeMonths, feeStartMonth } = useApp();
   const { closePayment, openReceipt, toast } = useUI();
 
   const [student, setStudent] = useState(initialStudent);
@@ -23,32 +24,29 @@ function PaymentBody({ initialStudent }) {
 
   const ctx = useMemo(() => {
     if (!student) return null;
-    // Whole academic session (July → June) + any older month still unpaid: the in-charge picks
-    // arrears, the current month or months in advance — several at once if needed
-    const sessionStart = ACADEMIC_MONTHS.indexOf(settings.currentMonth) <= 5 ? settings.currentYear : settings.currentYear - 1;
-    const yearOf = (m) => (ACADEMIC_MONTHS.indexOf(m) <= 5 ? sessionStart : sessionStart + 1);
-    const curIdx = ACADEMIC_MONTHS.indexOf(settings.currentMonth);
+    // The class's fee months (fee start → end of session; e.g. Jan 2026 onwards for a class with
+    // arrears) + any other month still unpaid: the in-charge picks arrears, this month or advance
+    const curPeriod = periodOf(settings.currentMonth, settings.currentYear);
     const own = fees.filter((f) => f.studentId === student.id);
     const rate = Number(student.monthlyFee || settings.defaultMonthlyFee);
     const keyOf = (m, y) => `${y}-${m}`;
-    const admitted = String(student.admissionDate || '').slice(0, 7); // "2026-10"
-    const session = ACADEMIC_MONTHS.map((m, i) => {
-      const y = yearOf(m);
-      const row = own.find((f) => f.month === m && Number(f.year) === y);
-      // Months before admission are not owed (unless a fee row was made for them anyway)
-      if (!row && admitted && `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}` < admitted) return null;
-      // Taken with admission (before the class's fee start month): not listed, never collected
-      const beforeStart = isBeforeStart(m, y);
-      if (beforeStart) return null;
-      return {
-        key: keyOf(m, y), month: m, year: y, row, beforeStart,
-        due: beforeStart ? 0 : row ? Number(row.due || 0) : rate,
-        paid: beforeStart || (row ? feeStatus(row) === 'Paid' : false),
-        future: i > curIdx,
-        past: i < curIdx,
-        current: i === curIdx,
-      };
-    }).filter(Boolean);
+    // Without a class fee start month, months before the student's admission are not owed
+    const admitted = feeStartMonth ? '' : String(student.admissionDate || '').slice(0, 7);
+    const session = feeMonths
+      .map(({ month: m, year: y, period }) => {
+        const row = own.find((f) => f.month === m && Number(f.year) === y);
+        if (!row && admitted && period < admitted) return null;
+        if (isBeforeStart(m, y)) return null;
+        return {
+          key: keyOf(m, y), month: m, year: y, row,
+          due: row ? Number(row.due || 0) : rate,
+          paid: row ? feeStatus(row) === 'Paid' : false,
+          future: period > curPeriod,
+          past: period < curPeriod,
+          current: period === curPeriod,
+        };
+      })
+      .filter(Boolean);
     const older = own
       .filter((f) => Number(f.due) > 0 && !session.some((x) => x.month === f.month && x.year === Number(f.year)))
       .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), paid: false, past: true }));
@@ -61,7 +59,7 @@ function PaymentBody({ initialStudent }) {
       fine: activeFines.reduce((a, fn) => a + fn.due, 0),
       exam: dueExam ? Number(dueExam.due || dueExam.amount) : 0,
     };
-  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee]);
+  }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee, feeMonths, feeStartMonth]);
 
   // Starts on this month (if unpaid); the in-charge adds or removes months
   const defaultMonths = (c) => new Set((c?.months || []).filter((m) => m.current && !m.paid && m.due > 0).map((m) => m.key));
@@ -74,6 +72,8 @@ function PaymentBody({ initialStudent }) {
   const [saving, setSaving] = useState(false);
 
   const chosen = ctx && months ? ctx.months.filter((m) => months.has(m.key)) : [];
+  // Same month twice in the list (e.g. Jan 2026 and Jan 2027) → show the year on those buttons
+  const repeated = new Set((ctx?.months || []).map((m) => m.month).filter((m, i, a) => a.indexOf(m) !== i));
   const monthly = chosen.reduce((a, m) => a + m.due, 0);
   const autoTotal = ctx ? monthly + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0) : 0;
   const total = amount ?? autoTotal;
@@ -229,7 +229,10 @@ function PaymentBody({ initialStudent }) {
                   on ? 'bg-brand-600 text-white ring-brand-600' : m.paid ? 'bg-emerald-50/70 ring-emerald-100' : 'bg-white ring-slate-200',
                 )}
               >
-                <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>{monthBn(m.month)}</span>
+                <span className={cx('block text-[14px] font-bold leading-tight', on ? 'text-white' : m.paid ? 'text-emerald-700' : 'text-ink')}>
+                  {monthBn(m.month)}
+                  {repeated.has(m.month) && <span className="tabular text-[11.5px] font-semibold opacity-70"> {String(m.year).slice(2)}</span>}
+                </span>
                 <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
                   {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
                 </span>
