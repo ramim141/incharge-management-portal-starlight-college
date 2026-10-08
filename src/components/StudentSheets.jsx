@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, cx } from './ui';
+import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import {
   taka, monthBn, groupBn, fmtDate, FEE_STATUS, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, ACADEMIC_MONTHS, todayISO, FINE_STATUS,
@@ -373,6 +373,7 @@ function StudentForm({ editing }) {
     };
   });
   const [errors, setErrors] = useState({});
+  const [paidAtAdmission, setPaidAtAdmission] = useState(true);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }));
 
   const save = async () => {
@@ -396,7 +397,7 @@ function StudentForm({ editing }) {
       toast('তথ্য আপডেট হয়েছে');
       closeStudentForm();
     } else {
-      const created = await addStudent(data);
+      const created = await addStudent(data, { paidAtAdmission });
       toast(`${created.name} যুক্ত হয়েছে`);
       closeStudentForm();
       setTimeout(() => openStudent(created), 80);
@@ -491,6 +492,8 @@ function StudentForm({ editing }) {
           />
         </Field>
       </FormSection>
+
+      {!editing && <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(settings.currentMonth)} />}
 
       <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
         <Button size="lg" block onClick={save}>

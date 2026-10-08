@@ -3,8 +3,8 @@ import { Upload, FileDown, ClipboardPaste, CheckCircle2, AlertTriangle, Users, K
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { backend, errorText } from '../../backend';
-import { Button, Field, Input, Textarea, Badge, Segmented, cx } from '../../components/ui';
-import { EN_MONTHS, GENDERS, downloadCSV, todayISO } from '../../lib/format';
+import { Button, Field, Input, Textarea, Badge, Segmented, PaidAtAdmission, cx } from '../../components/ui';
+import { EN_MONTHS, GENDERS, downloadCSV, todayISO, monthBn } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
 
 /** The whole institution's list at once; each student lands in their class */
@@ -18,6 +18,7 @@ function ListImport({ classes, onDone }) {
   const [result, setResult] = useState(null); // { plan, errors, unknownHeaders }
   const [created, setCreated] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [paidAtAdmission, setPaidAtAdmission] = useState(true);
 
   const onFile = async (e) => {
     const f = e.target.files?.[0];
@@ -63,7 +64,7 @@ function ListImport({ classes, onDone }) {
     setBusy(true);
     try {
       const now = new Date();
-      const { ops, created: list } = buildImportOps(result.plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear() });
+      const { ops, created: list } = buildImportOps(result.plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear(), paidAtAdmission });
       await backend.write(ops, { wait: true });
       setCreated(list);
       setStep('done');
@@ -166,6 +167,8 @@ function ListImport({ classes, onDone }) {
           <p className="text-[12.5px] text-slate-500">এই কলামগুলো চেনা যায়নি, তাই বাদ: {result.unknownHeaders.join(', ')}</p>
         )}
 
+        <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(EN_MONTHS[new Date().getMonth()])} />
+
         <div className="grid grid-cols-[auto_1fr] gap-2">
           <Button variant="secondary" icon={ArrowLeft} onClick={() => setStep('input')}>
             ফিরুন
@@ -267,6 +270,7 @@ function SingleStudentForm({ classes }) {
   const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [paidAtAdmission, setPaidAtAdmission] = useState(true);
   const [last, setLast] = useState(null); // the student just added (to show their PIN)
   const [showPin, setShowPin] = useState(false);
   const set = (k) => (e) => {
@@ -295,7 +299,7 @@ function SingleStudentForm({ classes }) {
       if (errors.length) throw Object.assign(new Error(errors[0].msg), { code: 'form' });
       if (plan[0]?.skipped.length) throw Object.assign(new Error(`রোল ${f.roll} এই ক্লাসে আগে থেকেই আছে`), { code: 'form' });
       const now = new Date();
-      const { ops, created } = buildImportOps(plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear() });
+      const { ops, created } = buildImportOps(plan, { institution, month: EN_MONTHS[now.getMonth()], year: now.getFullYear(), paidAtAdmission });
       await backend.write(ops, { wait: true });
       setLast(created[0]);
       setShowPin(false);
@@ -396,6 +400,8 @@ function SingleStudentForm({ classes }) {
       <Field label="পোর্টাল পিন" hint="খালি রাখলে আপনাআপনি তৈরি হবে">
         <Input inputMode="numeric" maxLength={6} value={f.pin} onChange={(e) => set('pin')(e.target.value.replace(/\D/g, ''))} className="tabular tracking-[0.3em]" />
       </Field>
+
+      <PaidAtAdmission checked={paidAtAdmission} onChange={setPaidAtAdmission} month={monthBn(EN_MONTHS[new Date().getMonth()])} />
 
       {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
 

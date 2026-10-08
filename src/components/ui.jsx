@@ -105,6 +105,23 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
   );
 }
 
+/** Tick box shown when adding students: the admission-month fee was already collected */
+export function PaidAtAdmission({ checked, onChange, month }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={cx('press flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left ring-1 ring-inset', checked ? 'bg-emerald-50 ring-emerald-200' : 'bg-white ring-slate-200')}
+    >
+      <Checkbox checked={checked} className="mt-0.5" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14.5px] font-semibold text-ink">ভর্তির সময় {month ? `${month} মাসের ` : 'এই মাসের '}বেতন নেওয়া হয়েছে</span>
+        <span className="block text-[12.5px] text-slate-500">টিক থাকলে এই মাস পরিশোধিত হিসেবে থাকবে — বাকি দেখাবে না</span>
+      </span>
+    </button>
+  );
+}
+
 /** The college logo (src/assets/images/logo.png) — used on the portal, login, splash and receipts */
 export function Logo({ size = 64, className }) {
   return <img src={logoUrl} alt="Starlight College" width={size} height={size} style={{ width: size, height: size }} className={cx('shrink-0 object-contain', className)} />;

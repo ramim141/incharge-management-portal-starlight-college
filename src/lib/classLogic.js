@@ -50,6 +50,14 @@ export function newFeeRow(student, settings, month = settings.currentMonth, year
   };
 }
 
+export const ADMISSION_NOTE = 'ভর্তির সময় আদায়';
+
+/** The same fee row, fully paid without a receipt (e.g. collected at admission) */
+export function markFeePaid(fee, note = ADMISSION_NOTE) {
+  const total = Number(fee.amount) + Number(fee.fine || 0);
+  return { ...fee, paid: total, due: 0, status: 'Paid', note: note || fee.note || '', settledAt: new Date().toISOString() };
+}
+
 export const randomPin = () => {
   const a = new Uint32Array(1);
   crypto.getRandomValues(a);

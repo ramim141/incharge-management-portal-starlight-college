@@ -1,6 +1,6 @@
 // Bulk student import for the principal: a CSV file or rows pasted from Excel / Google Sheets.
 // Each row goes to the class named in its "class" column (or the class picked on screen).
-import { newStudentRecord, newFeeRow, buildClassSettings } from './classLogic';
+import { newStudentRecord, newFeeRow, buildClassSettings, markFeePaid } from './classLogic';
 import { buildPortalSnapshot } from './portal';
 import { quickHash } from './hash';
 import { setClassLabels } from './format';
@@ -187,7 +187,7 @@ export function planImport(rows, { classes, existing, defaultClass }) {
 }
 
 /** Firestore ops for a plan: student + this month's fee + ready-to-use portal record per student */
-export function buildImportOps(plan, { institution, month, year }) {
+export function buildImportOps(plan, { institution, month, year, paidAtAdmission = false }) {
   const ops = [];
   const created = [];
   plan.forEach((g) => {
@@ -199,7 +199,8 @@ export function buildImportOps(plan, { institution, month, year }) {
     }
     g.students.forEach(({ input }) => {
       const student = newStudentRecord(input, g.cls.id, settings);
-      const fee = newFeeRow(student, settings);
+      // Admission-month fee collected together with admission → saved as already paid
+      const fee = paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
       const snap = buildPortalSnapshot({
         student,
         fees: [fee],

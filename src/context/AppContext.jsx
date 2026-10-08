@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { backend, isLocal } from '../backend';
-import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, pad } from '../lib/classLogic';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, pad } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels } from '../lib/format';
 import { newId, portalKey, quickHash } from '../lib/hash';
 import { buildPortalSnapshot } from '../lib/portal';
@@ -129,14 +129,31 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const feeRow = (student, month = currentMonth, year = currentYear) => newFeeRow(student, settings, month, year);
 
   /* ───────────── actions ───────────── */
-  const addStudent = async (input) => {
+  /** paidAtAdmission: this month's fee was collected together with admission → saved as paid */
+  const addStudent = async (input, { paidAtAdmission = false } = {}) => {
     const student = newStudentRecord(input, classId, settings);
     const { id } = student;
+    const fee = feeRow(student);
     await write([
       { type: 'set', path: P('students', id), data: student },
-      { type: 'set', path: P('fees', `fee-${id}-${currentYear}-${currentMonth}`), data: feeRow(student) },
+      { type: 'set', path: P('fees', fee.id), data: paidAtAdmission ? markFeePaid(fee) : fee },
     ]);
     return student;
+  };
+
+  /**
+   * Marks a month as paid for every active student (e.g. collected at admission — no receipt).
+   * Missing fee rows are created; already-paid rows are left alone. Returns how many changed.
+   */
+  const markMonthPaid = async (month, year, note = ADMISSION_NOTE) => {
+    const ops = [];
+    activeStudents.forEach((s) => {
+      const row = fees.find((f) => f.studentId === s.id && f.month === month && Number(f.year) === Number(year));
+      if (row && row.due <= 0) return;
+      ops.push({ type: 'set', path: P('fees', row?.id || feeRow(s, month, Number(year)).id), data: markFeePaid(row || feeRow(s, month, Number(year)), note) });
+    });
+    if (ops.length) await write(ops);
+    return ops.length;
   };
 
   const updateStudent = async (id, patch) => {
@@ -433,7 +450,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
 
     activeTab, setActiveTab,
 
-    addStudent, updateStudent, deleteStudent, updateFee, generateMonthFees, applyAutoFines, saveAttendanceRecord,
+    addStudent, updateStudent, deleteStudent, updateFee, markMonthPaid, generateMonthFees, applyAutoFines, saveAttendanceRecord,
     getStudentAttendanceStats, recordPayment, addFine, updateFine, waiveFine, deleteFine, absenceFineFor, createExam, calculateStudentTotalDue,
     generateWhatsAppMessage, importBackup,
   };
