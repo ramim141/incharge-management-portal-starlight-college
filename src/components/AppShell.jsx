@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   House, Users, CalendarCheck, LayoutGrid, Plus, CreditCard, TriangleAlert, ClipboardList,
   ReceiptText, ChartColumn, Settings, LogOut, UserRound, ChevronRight, Database, ArrowLeft, Building2,
@@ -7,7 +7,7 @@ import {
 import { AccountSheet } from './AccountSheets';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { useBackHandler } from '../lib/backstack';
+import { pushLayer } from '../lib/backstack';
 import { Sheet, Avatar, cx, CONTAINER, GUTTER } from './ui';
 
 const TABS = [
@@ -37,8 +37,23 @@ export function AppShell({ children }) {
     setTimeout(() => setAccount(kind), 80);
   };
 
-  // Back from any section returns to Home before leaving the app
-  useBackHandler(activeTab !== 'dashboard', () => setActiveTab('dashboard'));
+  // Every section change adds a history step, so Back returns to the section you came from
+  // (and only leaves the app from the first one)
+  const prevTab = useRef(activeTab);
+  const viaBack = useRef(false);
+  useEffect(() => {
+    const from = prevTab.current;
+    if (from === activeTab) return;
+    prevTab.current = activeTab;
+    if (viaBack.current) {
+      viaBack.current = false;
+      return;
+    }
+    pushLayer(() => {
+      viaBack.current = true;
+      setActiveTab(from);
+    });
+  }, [activeTab, setActiveTab]);
 
   const go = (id) => {
     setActiveTab(id);
@@ -69,7 +84,7 @@ export function AppShell({ children }) {
             </button>
           </div>
         )}
-        <div key={activeTab} className="animate-fade">{children}</div>
+        {children}
       </main>
 
       <nav
@@ -158,7 +173,7 @@ export function AppShell({ children }) {
             })}
           </div>
 
-          <div className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-3xl ring-1 ring-slate-200/80">
+          <div className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-3xl">
             {isPrincipal && (
               <button
                 type="button"

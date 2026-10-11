@@ -1,4 +1,4 @@
-import React, { useEffect, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useState, lazy, Suspense, Activity } from 'react';
 import { LogOut, UserX, School, Settings2, KeyRound, Mail } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -15,6 +15,12 @@ import { InstallPrompt } from './components/InstallPrompt';
 import { Button, Logo } from './components/ui';
 
 // Lazy-loaded views for code splitting
+// Staff sessions: start downloading the main screens right away, in parallel with sign-in
+if (typeof window !== 'undefined' && localStorage.getItem('xi_view') === 'staff') {
+  import('./views/AdminDashboard');
+  import('./views/principal/PrincipalApp');
+}
+
 const StudentPortal = lazy(() => import('./views/StudentPortal').then((m) => ({ default: m.StudentPortal })));
 const AdminLogin = lazy(() => import('./views/AdminLogin').then((m) => ({ default: m.AdminLogin })));
 const PrincipalApp = lazy(() => import('./views/principal/PrincipalApp').then((m) => ({ default: m.PrincipalApp })));
@@ -53,6 +59,15 @@ export function Splash({ text = 'লোড হচ্ছে…' }) {
   );
 }
 
+// In-app section loading: a quiet inline spinner, not a full-screen splash
+function ViewLoading() {
+  return (
+    <div className="grid place-items-center py-32">
+      <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600" />
+    </div>
+  );
+}
+
 function Notice({ icon: Icon, title, text, onSignOut, account }) {
   const [sheet, setSheet] = useState(null);
   return (
@@ -84,6 +99,26 @@ function Notice({ icon: Icon, title, text, onSignOut, account }) {
 
 function ClassViews() {
   const { activeTab, loading, classDoc, exitClass, signOut } = useApp();
+  // Sections stay mounted once opened (just hidden), so switching back is instant and keeps filters, scroll and drafts
+  const [visited, setVisited] = useState(() => new Set([activeTab]));
+  if (!visited.has(activeTab)) setVisited((v) => new Set(v).add(activeTab));
+
+  // Fetch the other sections' code while the app is idle, so the first visit has no loading screen
+  useEffect(() => {
+    const warm = () => {
+      import('./views/StudentsView');
+      import('./views/AttendanceView');
+      import('./views/FeesView');
+      import('./views/PaymentsView');
+      import('./views/DueStudentsView');
+      import('./views/ExamFineView');
+      import('./views/ReportsView');
+      import('./views/SettingsView');
+    };
+    const id = window.requestIdleCallback ? window.requestIdleCallback(warm) : setTimeout(warm, 1500);
+    return () => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : clearTimeout(id));
+  }, []);
+
   if (loading) return <Splash text="ক্লাসের তথ্য আনা হচ্ছে…" />;
   if (!classDoc) {
     return (
@@ -95,13 +130,22 @@ function ClassViews() {
       />
     );
   }
-  const View = VIEWS[activeTab] || AdminDashboard;
   return (
     <>
       <AppShell>
-        <Suspense fallback={<Splash text="লোড হচ্ছে…" />}>
-          <View />
-        </Suspense>
+        {[...visited, ...(visited.has(activeTab) ? [] : [activeTab])].map((id) => {
+          const View = VIEWS[id] || AdminDashboard;
+          return (
+            // Hidden sections keep their state but stop re-rendering on every data change
+            <Activity key={id} mode={id === activeTab ? 'visible' : 'hidden'}>
+              <div className="animate-fade">
+                <Suspense fallback={<ViewLoading />}>
+                  <View />
+                </Suspense>
+              </div>
+            </Activity>
+          );
+        })}
       </AppShell>
       {/* Global sheets — any screen can open these through useUI() */}
       <StudentDetailSheet />

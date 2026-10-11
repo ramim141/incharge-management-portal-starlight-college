@@ -188,6 +188,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     const rollChanged = old.roll != null && newRoll !== Number(old.roll);
     const hasFeePatch = patch.monthlyFee !== undefined && patch.monthlyFee !== null && patch.monthlyFee !== '';
     const newMonthlyFee = hasFeePatch ? Number(patch.monthlyFee) : null;
+    const newTransport = patch.transport !== undefined || patch.transportFee !== undefined ? (patch.transport ? Number(patch.transportFee || 0) : 0) : null;
     const feeChanged = newMonthlyFee !== null && (old.monthlyFee == null || Number(old.monthlyFee) !== newMonthlyFee);
 
     // Update existing fee rows for this student
@@ -210,6 +211,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
         feePatch.due = due;
         feePatch.status = status;
       }
+      if (newTransport !== null && !f.beforeStart && f.status !== 'Paid') feePatch.transport = newTransport;
       if (Object.keys(feePatch).length) {
         ops.push({ type: 'merge', path: P('fees', f.id), data: feePatch });
       }
@@ -380,7 +382,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
    * feeMonths: [{ month, year }] the in-charge picked (any month: arrears, current or advance).
    * Money goes to them oldest first; a month without a fee row yet gets one created.
    */
-  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, feeMonths = null, fineId = null, fineIds = null, examFeeId = null }) => {
+  const recordPayment = async ({ studentId, roll, studentName, amount, items, method = 'Cash', trxId = '', paymentDate = new Date().toISOString(), feeId = null, feeMonths = null, fineId = null, fineIds = null, examFeeId = null, withTransport = true }) => {
     const last = payments.reduce((m, p) => Math.max(m, Number(String(p.receiptNo).split('-').pop()) || 0), 100);
     const payment = {
       id: newId('pay'),
@@ -439,7 +441,10 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       if (left <= 0) return;
       const charge = Number(fee.amount) + Number(fee.fine || 0) - Number(fee.fineWaived || 0);
       const owed = Math.max(0, charge - Number(fee.paid || 0));
-      const pay = i === monthRows.length - 1 ? left : Math.min(left, owed);
+      // Transport left unticked stays owed on the month; only the rest is settled now
+      const transport = Math.min(Number(fee.transport ?? (student?.transport ? student.transportFee : 0)) || 0, owed);
+      const settle = withTransport ? owed : owed - transport;
+      const pay = i === monthRows.length - 1 ? left : Math.min(left, settle);
       left -= pay;
       const paid = Number(fee.paid || 0) + pay;
       const due = Math.max(0, charge - paid);

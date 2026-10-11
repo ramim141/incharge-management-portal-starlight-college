@@ -224,7 +224,7 @@ function Overview({
         <button
           type="button"
           onClick={onNewClass}
-          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card hover:bg-slate-50"
         >
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-50 text-brand-600">
             <Plus className="h-5 w-5" />
@@ -234,7 +234,7 @@ function Overview({
         <button
           type="button"
           onClick={onNewTeacher}
-          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card hover:bg-slate-50"
         >
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-600">
             <UserPlus className="h-5 w-5" />
@@ -244,7 +244,7 @@ function Overview({
         <button
           type="button"
           onClick={onImportStudents}
-          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card ring-1 ring-slate-200/80 hover:bg-slate-50"
+          className="press flex flex-col items-center justify-center gap-1.5 rounded-2xl bg-white p-3 text-center shadow-card hover:bg-slate-50"
         >
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
             <Upload className="h-5 w-5" />
@@ -339,7 +339,7 @@ function AttendanceReminderSheet({ classes, teachers, institution, onClose, onEd
             const text = `আসসালামু আলাইকুম ${teacherName ? `${teacherName} ` : ''}স্যার/ম্যাডাম,\nআজকের ${c.name}${c.section ? ` (${c.section})` : ''}-এর হাজিরা এখনো পোর্টালে এন্ট্রি করা হয়নি। অনুগ্রহ করে দ্রুত আজকের হাজিরা সম্পন্ন করুন।\n— অধ্যক্ষ${institution?.name ? `, ${institution.name}` : ''}`;
 
             return (
-              <div key={c.id} className="flex flex-col gap-2.5 rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/80">
+              <div key={c.id} className="flex flex-col gap-2.5 rounded-2xl bg-slate-50 p-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15px] font-bold text-ink">{c.name}</p>
@@ -541,7 +541,7 @@ function ClassesTab({ classes, users: _users, teachers, onOpenClass, filter = 'a
         <button
           type="button"
           onClick={onOpenImport}
-          className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-card ring-1 ring-slate-200/70"
+          className="press mb-3 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-card"
         >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
             <Upload className="h-5 w-5" />
@@ -563,7 +563,7 @@ function ClassesTab({ classes, users: _users, teachers, onOpenClass, filter = 'a
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="ক্লাস খুঁজুন (নাম, কোড, শাখা, ইনচার্জ)..."
-              className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card ring-1 ring-inset ring-slate-200/80 outline-none focus:ring-2 focus:ring-brand-500"
+              className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card outline-none focus:ring-2 focus:ring-brand-500"
             />
             {query && (
               <button
@@ -925,7 +925,7 @@ function TeachersTab({ classes, users, teachers, institution, onNewTeacher, onTe
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="শিক্ষক খুঁজুন (নাম, আইডি, মোবাইল)..."
-            className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card ring-1 ring-inset ring-slate-200/80 outline-none focus:ring-2 focus:ring-brand-500"
+            className="h-11 w-full rounded-2xl bg-white pl-10 pr-9 text-[14.5px] text-ink shadow-card outline-none focus:ring-2 focus:ring-brand-500"
           />
           {query && (
             <button
@@ -1300,7 +1300,7 @@ function TeacherDetail({ t, classes, users, institution, onClose, onReissued }) 
       </div>
 
       {/* Share Login Info & Portal Link */}
-      <section className="space-y-2.5 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200/80">
+      <section className="space-y-2.5 rounded-3xl bg-slate-50 p-4">
         <div className="flex items-center justify-between">
           <p className="flex items-center gap-1.5 text-[13.5px] font-bold text-ink">
             <IdCard className="h-4 w-4 text-brand-600" /> লগইন আইডি ও পোর্টাল লিংক

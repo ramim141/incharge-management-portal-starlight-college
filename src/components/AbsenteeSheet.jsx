@@ -66,7 +66,7 @@ export function AbsenteeSheet({ open, onClose, date, absentStudents = [] }) {
     >
       <div className="space-y-4 pt-1">
         {/* Progress & counter */}
-        <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200/80">
+        <div className="flex items-center justify-between rounded-2xl bg-slate-50 p-3">
           <div>
             <p className="text-[13px] font-semibold text-slate-700">
               মেসেজ পাঠানো হয়েছে {sentCount}/{absentStudents.length}
@@ -99,7 +99,7 @@ export function AbsenteeSheet({ open, onClose, date, absentStudents = [] }) {
         )}
 
         {/* Student list */}
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/70">
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white">
           {absentStudents.map((s) => {
             const isSent = sentIds.has(s.id);
             const isCopied = copiedId === s.id;

@@ -1,18 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info, UserMinus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info, UserCheck } from 'lucide-react';
+import { RollCall } from '../components/RollCall';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
+import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { AbsenteeSheet } from '../components/AbsenteeSheet';
-import { studentTags, ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka, toEnDigits } from '../lib/format';
+import { ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka } from '../lib/format';
 import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 const STATUS_STYLE = {
   Present: { row: '', pill: 'bg-emerald-500 text-white' },
-  Absent: { row: 'bg-rose-50/70', pill: 'bg-rose-500 text-white' },
-  Late: { row: 'bg-amber-50/70', pill: 'bg-amber-400 text-white' },
-  Leave: { row: 'bg-sky-50/70', pill: 'bg-sky-500 text-white' },
+  Absent: { row: 'bg-rose-50/60', pill: 'bg-rose-500 text-white' },
+  Late: { row: '', pill: 'bg-amber-400 text-white' },
+  Leave: { row: '', pill: 'bg-sky-500 text-white' },
 };
 
 const HELP_KEY = 'xi_att_help';
@@ -75,7 +76,6 @@ export const AttendanceView = () => {
   const [records, setRecords] = useState(() => ({ ...(attendance[todayISO()] || {}) }));
   const [dirty, setDirty] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
-  const [absentInput, setAbsentInput] = useState('');
   // How-to popup shown when the page opens, until the teacher ticks "আর দেখাবেন না"
   const [help, setHelp] = useState(() => {
     try {
@@ -122,6 +122,23 @@ export const AttendanceView = () => {
     setDirty(true);
   };
 
+  // One-by-one roll call: rc = index of the student on screen (list.length = summary page)
+  const [rc, setRc] = useState(null);
+  const rcPick = async (st) => {
+    const stu = list[rc];
+    if (!stu) return;
+    const next = { ...records, [stu.id]: st };
+    setRecords(next);
+    setDirty(true);
+    if (navigator.vibrate) navigator.vibrate(8);
+    if (rc + 1 >= list.length) {
+      setRc(list.length);
+      await save(next);
+    } else {
+      setRc(rc + 1);
+    }
+  };
+
   const markAll = (st) => {
     setRecords((r) => {
       const n = { ...r };
@@ -133,41 +150,8 @@ export const AttendanceView = () => {
     setDirty(true);
   };
 
-  const applyQuickAbsentees = () => {
-    const raw = toEnDigits(absentInput).trim();
-    if (!raw) return;
-    const rolls = [...new Set((raw.match(/\d+/g) || []).map(Number))];
-    if (!rolls.length) return;
-
-    const matched = [];
-    const notFound = [];
-    const nextRecords = { ...records };
-
-    rolls.forEach((r) => {
-      const s = active.find((st) => Number(st.roll) === r);
-      if (s) {
-        nextRecords[s.id] = 'Absent';
-        matched.push(r);
-      } else {
-        notFound.push(r);
-      }
-    });
-
-    if (matched.length > 0) {
-      setRecords(nextRecords);
-      setDirty(true);
-      setAbsentInput('');
-      if (navigator.vibrate) navigator.vibrate(12);
-      toast(`${matched.length} জন (রোল ${matched.join(', ')}) অনুপস্থিত চিহ্নিত করা হয়েছে`);
-    }
-
-    if (notFound.length > 0) {
-      toast(`রোল ${notFound.join(', ')} ক্লাসের তালিকায় পাওয়া যায়নি`, 'error');
-    }
-  };
-
-  const save = async () => {
-    const final = { ...records };
+  const save = async (override) => {
+    const final = { ...(override || records) };
     active.forEach((s) => {
       if (!final[s.id]) final[s.id] = 'Present';
     });
@@ -188,7 +172,20 @@ export const AttendanceView = () => {
   return (
     <div>
       <AttendanceHelp open={help} onClose={() => setHelp(false)} fine={hasAbsentFine ? settings.absentFine : null} />
-      <PageHeader title="হাজিরা" subtitle="দৈনিক হাজিরা খাতা" actions={<IconButton icon={Info} label="নিয়ম দেখুন" onClick={() => setHelp(true)} />}>
+      <PageHeader
+        title="হাজিরা"
+        subtitle={tab === 'sheet' ? `${counts.Present + counts.Late}/${list.length} উপস্থিত · ${rate}%` : undefined}
+        actions={
+          <>
+            {tab === 'sheet' && (
+              <Button size="sm" variant={dirty || !saved ? 'success' : 'secondary'} icon={Save} onClick={() => save()} className="font-bold">
+                {dirty || !saved ? 'সংরক্ষণ' : 'সংরক্ষিত'}
+              </Button>
+            )}
+            <IconButton icon={Info} label="নিয়ম দেখুন" onClick={() => setHelp(true)} />
+          </>
+        }
+      >
         <Segmented
           value={tab}
           onChange={setTab}
@@ -201,12 +198,21 @@ export const AttendanceView = () => {
 
       {tab === 'sheet' ? (
         <>
-          <Card className="flex items-center gap-2 p-2">
-            <Button variant="ghost" size="sm" className="w-11 px-0" aria-label="আগের দিন" onClick={() => changeDate(shiftISODate(date, -1))}>
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <label className="relative flex-1 cursor-pointer text-center">
-              <p className="text-[16px] font-bold text-ink">{isToday ? 'আজ' : dayNameBn(date)}</p>
+          {/* Date switcher */}
+          <div className="flex items-center justify-between rounded-2xl bg-white px-1 py-1">
+            <button
+              type="button"
+              aria-label="আগের দিন"
+              onClick={() => changeDate(shiftISODate(date, -1))}
+              className="press grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <label className="relative cursor-pointer text-center">
+              <p className="text-[16px] font-bold leading-tight text-ink">
+                {isToday ? 'আজ' : dayNameBn(date)}
+                <span className={cx('ml-1.5 inline-block h-2 w-2 rounded-full align-middle', dirty ? 'bg-amber-400' : saved ? 'bg-emerald-500' : 'bg-slate-300')} />
+              </p>
               <p className="text-[12.5px] text-slate-500">{fmtDate(date)}</p>
               <input
                 type="date"
@@ -217,81 +223,85 @@ export const AttendanceView = () => {
                 aria-label="তারিখ বাছুন"
               />
             </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-11 px-0"
+            <button
+              type="button"
               aria-label="পরের দিন"
               disabled={isToday}
               onClick={() => changeDate(shiftISODate(date, 1))}
+              className="press grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100 disabled:opacity-30"
             >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
-          </Card>
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </div>
 
-          <div className="mt-3 grid grid-cols-4 gap-2">
+          {/* Counts */}
+          <div className="mt-2.5 grid grid-cols-4 divide-x divide-slate-100 rounded-2xl bg-white py-2.5">
             {ATT_ORDER.map((k) => (
-              <div key={k} className="rounded-2xl bg-white py-2.5 text-center ring-1 ring-slate-200/70">
-                <p className={cx('tabular text-[20px] font-extrabold', { Present: 'text-emerald-600', Absent: 'text-rose-600', Late: 'text-amber-500', Leave: 'text-sky-600' }[k])}>
+              <div key={k} className="text-center">
+                <p className={cx('tabular text-[19px] font-extrabold leading-tight', { Present: 'text-emerald-600', Absent: 'text-rose-600', Late: 'text-amber-500', Leave: 'text-sky-600' }[k])}>
                   {counts[k]}
                 </p>
-                <p className="text-[12px] text-slate-500">{ATT_STATUS[k].bn}</p>
+                <p className="text-[11.5px] text-slate-500">{ATT_STATUS[k].bn}</p>
               </div>
             ))}
           </div>
 
+          {counts.Absent > 0 && (
+            <button
+              type="button"
+              onClick={() => setAbsentSheetOpen(true)}
+              className="press mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-rose-50 text-[12.5px] font-bold text-rose-700"
+            >
+              <WhatsAppIcon className="h-4 w-4" />
+              অনুপস্থিত {counts.Absent} জনের অভিভাবককে WhatsApp
+            </button>
+          )}
 
+          <button
+            type="button"
+            disabled={!list.length}
+            onClick={() => setRc(0)}
+            className="press mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 text-[13.5px] font-bold text-white shadow-lift disabled:opacity-40"
+          >
+            <UserCheck className="h-4 w-4" />
+            একজন একজন করে হাজিরা নিন
+          </button>
 
+          {/* Quick actions */}
           <div className="mt-3 flex items-center gap-2">
-            <Button variant="soft-success" size="sm" icon={CheckCheck} className="flex-1" onClick={() => markAll('Present')}>
+            <button
+              type="button"
+              onClick={() => markAll('Present')}
+              className="press flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-50 text-[13.5px] font-bold text-emerald-700"
+            >
+              <CheckCheck className="h-4 w-4" />
               সবাই উপস্থিত
-            </Button>
-            <Button variant="soft-danger" size="sm" className="flex-1" onClick={() => markAll('Absent')}>
+            </button>
+            <button
+              type="button"
+              onClick={() => markAll('Absent')}
+              className="press h-10 flex-1 rounded-xl bg-rose-50 text-[13.5px] font-bold text-rose-700"
+            >
               সবাই অনুপস্থিত
-            </Button>
+            </button>
             <FilterButton compact value={filters} defaults={FILTER_DEFAULTS} onChange={setFilters} groups={studentFilterGroups(settings, active)} />
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              applyQuickAbsentees();
-            }}
-            className="mt-2.5 flex items-center gap-2 rounded-2xl bg-white p-1.5 pl-3 ring-1 ring-slate-200/80 shadow-card"
-          >
-            <UserMinus className="h-4 w-4 shrink-0 text-rose-500" />
-            <input
-              type="text"
-              value={absentInput}
-              onChange={(e) => setAbsentInput(e.target.value)}
-              placeholder="অনুপস্থিত রোল লিখুন (যেমন: ১০২, ১০৫, ১১২)"
-              className="tabular min-w-0 flex-1 bg-transparent text-[13.5px] font-medium text-ink placeholder:text-slate-400 outline-none"
-            />
-            <Button
-              type="submit"
-              size="xs"
-              variant="soft-danger"
-              disabled={!absentInput.trim()}
-            >
-              অনুপস্থিত করুন
-            </Button>
-          </form>
-
+          {/* Students */}
           <Card className="mt-3 divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
             {list.map((s) => {
               const st = statusOf(s.id);
+              const fine = st === 'Absent' ? absenceFineFor(s) : 0;
               return (
                 <div key={s.id} className={cx('flex items-center transition-colors md:border-b md:border-slate-100 md:odd:border-r', STATUS_STYLE[st].row)}>
-                  <button type="button" onClick={() => cycle(s.id)} className="flex min-w-0 flex-1 items-center py-3 pl-4 pr-2 text-left max-[374px]:pl-3">
+                  <button type="button" onClick={() => cycle(s.id)} className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 pr-1.5 text-left">
+                    <RollBadge roll={s.roll} seed={s.id} size={38} />
                     <span className="min-w-0 flex-1">
                       <span className={cx('block truncate text-[15px] font-semibold', st === 'Absent' ? 'text-rose-700' : 'text-ink')}>{s.name}</span>
-                      <span className="tabular block truncate text-[12.5px] text-slate-500">
-                        রোল {s.roll}{studentTags(s) ? ` · ${studentTags(s)}` : ''}
-                        {st === 'Absent' && absenceFineFor(s) > 0 && <span className="font-semibold text-rose-600"> · জরিমানা {taka(absenceFineFor(s))}</span>}
-                      </span>
+                      {fine > 0 && <span className="tabular block text-[11.5px] font-semibold text-rose-600">জরিমানা {taka(fine)}</span>}
                     </span>
                   </button>
-                  <div className="flex shrink-0 gap-1 py-2 pr-2.5 max-[374px]:gap-0.5 max-[374px]:pr-2">
+                  <div className="flex shrink-0 gap-1 py-2 pr-2.5 max-[374px]:gap-0.5 max-[374px]:pr-1.5">
                     {ATT_ORDER.map((k) => (
                       <button
                         key={k}
@@ -312,34 +322,24 @@ export const AttendanceView = () => {
             })}
           </Card>
 
-          <div
-            className={DOCK} style={DOCK_BOTTOM}
-          >
-            <div className="flex items-center gap-2 rounded-[22px] bg-ink/95 p-2 pl-4 text-white shadow-2xl backdrop-blur">
-              <div className="min-w-0 flex-1">
-                <p className="tabular text-[15px] font-bold">
-                  {counts.Present + counts.Late}/{list.length} উপস্থিত · {rate}%
-                </p>
-                <p className="text-[12px] text-white/60">{dirty ? '● সংরক্ষণ করা হয়নি' : saved ? '✓ সংরক্ষিত' : 'এখনো সংরক্ষণ হয়নি'}</p>
-              </div>
-              {counts.Absent > 0 && (
-                <Button
-                  size="sm"
-                  variant="soft"
-                  icon={WhatsAppIcon}
-                  onClick={() => setAbsentSheetOpen(true)}
-                  className="bg-rose-500/20 text-rose-200 hover:bg-rose-500/30"
-                  title="অনুপস্থিতদের WhatsApp নোটিফিকেশন"
-                >
-                  জানান ({counts.Absent})
-                </Button>
-              )}
-              <Button variant={dirty || !saved ? 'success' : 'dark'} size="sm" icon={Save} onClick={save} className={!dirty && saved ? 'bg-white/10' : ''}>
-                সংরক্ষণ
-              </Button>
-            </div>
-          </div>
-          <div className="h-20" />
+          {rc !== null && (
+            <RollCall
+              list={list}
+              step={rc}
+              records={records}
+              getStats={getStudentAttendanceStats}
+              fineFor={absenceFineFor}
+              counts={counts}
+              rate={rate}
+              dirty={dirty}
+              date={date}
+              onPick={rcPick}
+              onStep={setRc}
+              onSave={() => save()}
+              onWhatsApp={() => setAbsentSheetOpen(true)}
+              onClose={() => setRc(null)}
+            />
+          )}
 
           <AbsenteeSheet
             open={absentSheetOpen}

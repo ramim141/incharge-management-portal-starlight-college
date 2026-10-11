@@ -51,7 +51,7 @@ export function Badge({ tone = 'slate', dot, children, className }) {
   return (
     <span
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold ring-1 ring-inset whitespace-nowrap',
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap',
         TONES[tone],
         className,
       )}
@@ -123,7 +123,7 @@ export function FeeStartSelect({ value, onChange }) {
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
-      className="h-12 w-full rounded-2xl bg-slate-50 px-4 text-[16px] font-medium text-ink outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-500"
+      className="h-12 w-full rounded-2xl bg-slate-100/80 px-4 text-[16px] font-medium text-ink outline-none focus:bg-white focus:ring-2 focus:ring-brand-500"
     >
       <option value="">শুরু থেকেই (ভর্তির মাস থেকে)</option>
       {options.map((o) => (
@@ -198,7 +198,7 @@ const BTN = {
   success: 'bg-emerald-600 text-white shadow-[0_10px_30px_-12px_rgba(5,150,105,.6)] hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none',
   danger: 'bg-rose-600 text-white hover:bg-rose-700',
   soft: 'bg-brand-50 text-brand-700 hover:bg-brand-100',
-  secondary: 'bg-white text-slate-800 ring-1 ring-inset ring-slate-200 hover:bg-slate-50',
+  secondary: 'bg-slate-100 text-slate-800 hover:bg-slate-200/70',
   ghost: 'text-slate-600 hover:bg-slate-100',
   'soft-danger': 'bg-rose-50 text-rose-700 hover:bg-rose-100',
   'soft-success': 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
@@ -240,7 +240,7 @@ export function IconButton({ icon: Icon, label, className, badge, tone = 'defaul
       {...rest}
       className={cx(
         'press relative grid h-11 w-11 place-items-center rounded-2xl',
-        tone === 'default' && 'bg-white text-slate-700 ring-1 ring-inset ring-slate-200/80 shadow-card',
+        tone === 'default' && 'bg-white text-slate-700 shadow-card',
         tone === 'plain' && 'text-slate-600 hover:bg-slate-100',
         tone === 'glass' && 'bg-white/15 text-white ring-1 ring-inset ring-white/20',
         className,
@@ -258,7 +258,7 @@ export function IconButton({ icon: Icon, label, className, badge, tone = 'defaul
 
 export function Card({ className, children, ...rest }) {
   return (
-    <div {...rest} className={cx('rounded-3xl bg-white ring-1 ring-slate-200/70 shadow-card', className)}>
+    <div {...rest} className={cx('rounded-3xl bg-white shadow-card', className)}>
       {children}
     </div>
   );
@@ -292,7 +292,7 @@ export function Field({ label, hint, error, children, className }) {
 
 // 16px font prevents iOS from zooming into inputs
 export const inputCls =
-  'w-full h-12 px-4 rounded-2xl bg-slate-50 ring-1 ring-inset ring-slate-200 text-[16px] font-medium text-ink placeholder:text-slate-400 outline-none transition focus:bg-white focus:ring-2 focus:ring-brand-500';
+  'w-full h-12 px-4 rounded-2xl bg-slate-100/80 text-[16px] font-medium text-ink placeholder:text-slate-400 outline-none transition focus:bg-white focus:ring-2 focus:ring-brand-500';
 
 export const Input = React.forwardRef(function Input({ className, ...rest }, ref) {
   return <input ref={ref} {...rest} className={cx(inputCls, className)} />;
@@ -313,7 +313,7 @@ export function SearchBar({ value, onChange, placeholder = 'খুঁজুন�
         inputMode={inputMode}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={cx(inputCls, 'bg-white pl-12 pr-11 shadow-card ring-slate-200/80 [&::-webkit-search-cancel-button]:hidden')}
+        className={cx(inputCls, 'bg-white pl-12 pr-11 shadow-card [&::-webkit-search-cancel-button]:hidden')}
       />
       {value && (
         <button
@@ -384,7 +384,7 @@ export function FilterButton({ groups, value, defaults, onChange, className, com
         className={cx(
           'press relative grid shrink-0 place-items-center shadow-card ring-1 ring-inset',
           compact ? 'h-10 w-10 rounded-xl' : 'h-12 w-12 rounded-2xl',
-          active ? 'bg-ink text-white ring-ink' : 'bg-white text-slate-600 ring-slate-200/80',
+          active ? 'bg-ink text-white ring-ink' : 'bg-white text-slate-600 ring-transparent',
           className,
         )}
       >
@@ -449,7 +449,7 @@ export function FilterButton({ groups, value, defaults, onChange, className, com
 /** Compact dropdown pill — for picking a month, report type, etc. without a row of chips */
 export function SelectPill({ value, onChange, options, className, label }) {
   return (
-    <label className={cx('press relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white pl-4 pr-9 text-[14px] font-semibold text-ink shadow-card ring-1 ring-inset ring-slate-200/80', className)}>
+    <label className={cx('press relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white pl-4 pr-9 text-[14px] font-semibold text-ink shadow-card', className)}>
       {label && <span className="text-slate-500">{label}</span>}
       <span className="truncate">{options.find((o) => o.value === value)?.label}</span>
       <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" />
@@ -524,7 +524,7 @@ export function EmptyState({ icon: Icon, title, text, action }) {
   return (
     <div className="flex flex-col items-center px-6 py-12 text-center">
       {Icon && (
-        <div className="mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-white text-slate-400 ring-1 ring-slate-200 shadow-card">
+        <div className="mb-4 grid h-16 w-16 place-items-center rounded-3xl bg-white text-slate-400 shadow-card">
           <Icon className="h-7 w-7" />
         </div>
       )}

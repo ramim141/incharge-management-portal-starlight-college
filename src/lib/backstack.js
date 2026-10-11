@@ -30,6 +30,18 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// A one-off layer: Back runs `run` once (e.g. return to the previous section). Used for navigation
+// history, where nothing closes the layer from the UI.
+export function pushLayer(run) {
+  const entry = { run, closedByBack: true, pushed: false };
+  const push = () => {
+    stack.push(entry);
+    window.history.pushState({ xiLayer: true }, '');
+    entry.pushed = true;
+  };
+  setTimeout(() => (ignorePops > 0 ? waiting.push(push) : push()), 0);
+}
+
 export function useBackHandler(active, onBack) {
   const ref = useRef(onBack);
   ref.current = onBack;

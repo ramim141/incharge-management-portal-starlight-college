@@ -108,7 +108,7 @@ export const AdminDashboard = () => {
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="press flex h-12 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left text-[14.5px] text-slate-400 ring-1 ring-slate-200/80 shadow-card transition hover:bg-slate-50/70"
+        className="press flex h-12 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left text-[14.5px] text-slate-400 shadow-card transition hover:bg-slate-50/70"
       >
         <Search className="h-5 w-5 text-slate-400" />
         <span className="flex-1">রোল, নাম বা ফোন দিয়ে খুঁজুন</span>
@@ -243,7 +243,7 @@ export const AdminDashboard = () => {
           { label: 'বকেয়া', icon: Wallet, cls: 'bg-rose-50 text-rose-600', onClick: () => setActiveTab('due') },
           { label: 'রিপোর্ট', icon: ChartColumn, cls: 'bg-sky-50 text-sky-600', onClick: () => setActiveTab('reports') },
         ].map((a) => (
-          <button key={a.label} type="button" onClick={a.onClick} className="press flex flex-col items-center gap-1.5 rounded-3xl bg-white py-3.5 ring-1 ring-slate-200/70 shadow-card max-[374px]:rounded-2xl max-[374px]:py-3">
+          <button key={a.label} type="button" onClick={a.onClick} className="press flex flex-col items-center gap-1.5 rounded-3xl bg-white py-3.5 shadow-card max-[374px]:rounded-2xl max-[374px]:py-3">
             <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', a.cls)}>
               <a.icon className="h-[22px] w-[22px]" />
             </span>
@@ -331,12 +331,12 @@ export const AdminDashboard = () => {
 
       {/* KPIs */}
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <button type="button" onClick={() => setActiveTab('students')} className="press rounded-3xl bg-white p-4 text-left ring-1 ring-slate-200/70 shadow-card">
+        <button type="button" onClick={() => setActiveTab('students')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
           <Users className="h-5 w-5 text-brand-600" />
           <p className="tabular mt-3 text-[24px] font-extrabold text-ink">{totalStudentsCount}</p>
           <p className="text-[12.5px] text-slate-500">মোট শিক্ষার্থী · {activeStudentsCount} সক্রিয়</p>
         </button>
-        <button type="button" onClick={() => setActiveTab('due')} className="press rounded-3xl bg-white p-4 text-left ring-1 ring-slate-200/70 shadow-card">
+        <button type="button" onClick={() => setActiveTab('due')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
           <Wallet className="h-5 w-5 text-rose-500" />
           <p className="tabular mt-3 text-[24px] font-extrabold text-rose-600 max-[374px]:text-[20px]">{taka(totalDueAcrossAll)}</p>
           <p className="text-[12.5px] text-slate-500">মোট বকেয়া (সব মিলিয়ে)</p>
@@ -449,7 +449,7 @@ function TodayPaymentsSheet({ open, onClose, payments, total }) {
           </span>
         </div>
 
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/70">
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white">
           {payments.length === 0 ? (
             <p className="py-8 text-center text-[13.5px] text-slate-400">আজ এখনো কোনো ক্যাশ আদায় নেই</p>
           ) : (
@@ -520,7 +520,7 @@ function SearchSheet({ open, onClose }) {
           return (
             <div
               key={s.id}
-              className="overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/80 shadow-card transition"
+              className="overflow-hidden rounded-2xl bg-white shadow-card transition"
             >
               {/* Student Header & Info (tap to view profile) */}
               <div
@@ -549,8 +549,8 @@ function SearchSheet({ open, onClose }) {
                 </div>
               </div>
 
-              {/* Bottom 3-col action bar */}
-              <div className="grid grid-cols-3 border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
+              {/* Bottom action bar */}
+              <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
                 <button
                   type="button"
                   onClick={(e) => {
@@ -558,9 +558,9 @@ function SearchSheet({ open, onClose }) {
                     onClose();
                     setTimeout(() => openPayment(s), 80);
                   }}
-                  className="press flex h-10 items-center justify-center gap-1.5 text-[13px] font-semibold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
+                  className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
                 >
-                  <CreditCard className="h-4 w-4" /> আদায়
+                  <CreditCard className="h-4 w-4" /> টাকা আদায়
                 </button>
 
                 <a
@@ -572,12 +572,13 @@ function SearchSheet({ open, onClose }) {
                       toast('মোবাইল নম্বর দেওয়া নেই', 'error');
                     }
                   }}
+                  title="কল করুন"
                   className={cx(
-                    'press flex h-10 items-center justify-center gap-1.5 text-[13px] font-semibold transition',
+                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
                     s.guardianPhone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
                   )}
                 >
-                  <Phone className="h-4 w-4" /> কল
+                  <Phone className="h-[18px] w-[18px]" />
                 </a>
 
                 <a
@@ -591,12 +592,13 @@ function SearchSheet({ open, onClose }) {
                       toast('মোবাইল নম্বর দেওয়া নেই', 'error');
                     }
                   }}
+                  title="WhatsApp"
                   className={cx(
-                    'press flex h-10 items-center justify-center gap-1.5 text-[13px] font-semibold transition',
+                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
                     s.guardianPhone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
                   )}
                 >
-                  <WhatsAppIcon className="h-4 w-4" /> WhatsApp
+                  <WhatsAppIcon className="h-[18px] w-[18px]" />
                 </a>
               </div>
             </div>

@@ -161,7 +161,7 @@ export function ForcePasswordChange({ onSignOut }) {
             </p>
           )}
         </div>
-        <div className="mt-6 rounded-[28px] bg-white p-5 shadow-card ring-1 ring-slate-200/70">
+        <div className="mt-6 rounded-[28px] bg-white p-5 shadow-card">
           <ChangePasswordForm firstTime />
         </div>
         <button type="button" onClick={onSignOut} className={cx('press mx-auto mt-6 flex items-center gap-2 text-[14px] font-semibold text-slate-500')}>

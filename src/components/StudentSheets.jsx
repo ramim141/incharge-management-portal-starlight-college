@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, RollBadge, Badge, Button, IconButton, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
+import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
 import {
@@ -129,62 +129,65 @@ function StudentDetail({ student: s }) {
 
   return (
     <div className="pt-1">
-      <div className="flex flex-col items-center text-center">
-        <RollBadge roll={s.roll} seed={s.id} size={84} rounded="rounded-[28px]" className="shadow-lg" />
-        <h2 className="mt-3 text-[21px] font-extrabold leading-tight text-ink">{s.name}</h2>
-        {s.nameEn && <p className="text-[13.5px] text-slate-500">{s.nameEn}</p>}
-        <div className="mt-2 flex flex-wrap justify-center gap-1.5">
-          {groupBn(s.group) && <Badge tone="slate">{groupBn(s.group)}</Badge>}
-          {sectionBn(s.section) && <Badge tone="slate">{sectionBn(s.section)}</Badge>}
-          {settings.useGender !== false && genderBn(s.gender) && <Badge tone="slate">{genderBn(s.gender)}</Badge>}
-          {s.status === 'inactive' && <Badge tone="red">নিষ্ক্রিয়</Badge>}
+      <div className="flex items-center gap-4">
+        <RollBadge roll={s.roll} seed={s.id} size={68} rounded="rounded-3xl" className="shadow-lg" />
+        <div className="min-w-0 flex-1">
+          <h2 className="line-clamp-2 text-[20px] font-extrabold leading-tight text-ink">{s.name}</h2>
+          {s.nameEn && <p className="truncate text-[13px] text-slate-500">{s.nameEn}</p>}
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {groupBn(s.group) && <Badge tone="slate">{groupBn(s.group)}</Badge>}
+            {sectionBn(s.section) && <Badge tone="slate">{sectionBn(s.section)}</Badge>}
+            {settings.useGender !== false && genderBn(s.gender) && <Badge tone="slate">{genderBn(s.gender)}</Badge>}
+            {s.status === 'inactive' && <Badge tone="red">নিষ্ক্রিয়</Badge>}
+            {s.transport && <Badge tone="brand">পরিবহন</Badge>}
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-4 gap-2">
+      <div className="mt-4 grid grid-cols-4 gap-2">
         {actions.map((a) => {
           const Icon = a.icon;
           const inner = (
             <>
-              <span className={cx('grid h-12 w-12 place-items-center rounded-2xl', a.cls)}>
-                <Icon className="h-[22px] w-[22px]" />
-              </span>
-              <span className="text-[12.5px] font-semibold text-slate-700">{a.label}</span>
+              <Icon className="h-5 w-5" />
+              <span className="text-[12px] font-semibold">{a.label}</span>
             </>
           );
+          const cls = cx('press flex flex-col items-center gap-1 rounded-2xl py-3', a.cls);
           return a.href ? (
-            <a key={a.label} href={a.href} className="press flex flex-col items-center gap-1.5">
+            <a key={a.label} href={a.href} className={cls}>
               {inner}
             </a>
           ) : (
-            <button key={a.label} type="button" onClick={a.onClick} className="press flex flex-col items-center gap-1.5">
+            <button key={a.label} type="button" onClick={a.onClick} className={cls}>
               {inner}
             </button>
           );
         })}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2.5">
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
         <div className={cx('rounded-3xl p-4', due > 0 ? 'bg-rose-50' : 'bg-emerald-50')}>
           <p className={cx('text-[12.5px] font-semibold', due > 0 ? 'text-rose-700' : 'text-emerald-700')}>মোট বকেয়া</p>
-          <p className={cx('tabular mt-1 text-[24px] font-extrabold', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{taka(due)}</p>
-          <p className="text-[12px] text-slate-500">{due > 0 ? 'বেতন + জরিমানা + পরীক্ষা' : 'সব পরিশোধিত ✓'}</p>
+          <p className={cx('tabular mt-0.5 text-[24px] font-extrabold leading-tight', due > 0 ? 'text-rose-600' : 'text-emerald-600')}>{taka(due)}</p>
+          <p className="mt-0.5 text-[11.5px] text-slate-500">{due > 0 ? 'বেতন · জরিমানা · পরীক্ষা' : 'সব পরিশোধিত ✓'}</p>
         </div>
         <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-4">
-          <Ring value={att.percentage} size={58} tone={att.percentage >= 75 ? 'green' : 'red'}>
-            <span className="tabular text-[13px] font-extrabold text-ink">{Math.round(att.percentage)}%</span>
+          <Ring value={att.percentage} size={54} tone={att.percentage >= 75 ? 'green' : 'red'}>
+            <span className="tabular text-[12.5px] font-extrabold text-ink">{Math.round(att.percentage)}%</span>
           </Ring>
-          <div>
+          <div className="min-w-0">
             <p className="text-[12.5px] font-semibold text-slate-600">হাজিরা</p>
-            <p className="tabular text-[13px] text-slate-500">
+            <p className="tabular text-[12.5px] text-slate-500">
               {att.present}/{att.totalClasses} দিন
             </p>
+            {att.absent > 0 && <p className="tabular text-[12px] font-semibold text-rose-600">অনুপস্থিত {att.absent}</p>}
           </div>
         </div>
       </div>
 
       <Segmented
-        className="mt-5"
+        className="mt-4"
         value={tab}
         onChange={setTab}
         options={[
@@ -217,52 +220,55 @@ function StudentDetail({ student: s }) {
               )}
             </div>
           )}
-          <Group title="মাসিক বেতন">
-            {feeStartMonth && <p className="py-2.5 text-[13px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে</p>}
+          <section>
+            <p className="mb-2 text-[13px] font-bold tracking-wide text-slate-400">মাসিক বেতন</p>
+            {feeStartMonth && (
+              <p className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-[12.5px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে</p>
+            )}
             {sFees.length === 0 && <Empty text={feeStartMonth ? `${feeStartLabel(feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'} />}
-            {sFees.map((f) => {
-              const st = feeStatus(f);
-              return (
-                <div key={f.id} className="py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-semibold text-ink">
+            <div className="space-y-2">
+              {sFees.map((f) => {
+                const st = feeStatus(f);
+                const tr = Number(f.transport) || 0;
+                const owes = st !== 'Paid' && Number(f.due) > 0;
+                return (
+                  <div key={f.id} className={cx('rounded-2xl p-3.5', st === 'Paid' ? 'bg-slate-50' : 'bg-white shadow-card ring-1 ring-slate-200')}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[15px] font-bold text-ink">
                         {monthBn(f.month)} {f.year}
                       </p>
-                      <p className="tabular text-[12.5px] text-slate-500">
-                        ফি {taka(f.amount)}
-                        {f.fine ? ` · জরিমানা ${taka(f.fine)}${f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}` : ''} · দিয়েছে {taka(f.paid)}
-                      </p>
+                      <Badge tone={feeBadge(f, st).tone} dot>
+                        {feeBadge(f, st).bn}
+                      </Badge>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <Badge tone={feeBadge(f, st).tone} dot>
-                          {feeBadge(f, st).bn}
-                        </Badge>
-                        {Number(f.due) > 0 && <p className="tabular mt-1 text-[13px] font-bold text-rose-600">{taka(f.due)}</p>}
+                    <div className="tabular mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[12.5px] text-slate-500">
+                      <span>বেতন {taka(f.amount - tr)}</span>
+                      {tr > 0 && <span>পরিবহন {taka(tr)}</span>}
+                      {f.fine ? <span>জরিমানা {taka(f.fine)}{f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}</span> : null}
+                      <span>দিয়েছে {taka(f.paid)}</span>
+                    </div>
+                    {owes && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <p className="tabular flex-1 text-[14px] font-bold text-rose-600">বাকি {taka(f.due)}</p>
+                        <button type="button" onClick={() => setEditingFee(f)} aria-label="ফি সম্পাদনা" className="press grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-500">
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button type="button" onClick={() => openPayment(s)} className="press h-9 rounded-xl bg-brand-600 px-4 text-[13px] font-bold text-white">
+                          আদায়
+                        </button>
                       </div>
-                      {st !== 'Paid' && (
-                        <IconButton
-                          icon={Pencil}
-                          label="ফি সম্পাদনা"
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 text-slate-400 hover:text-ink active:bg-slate-100"
-                          onClick={() => setEditingFee(f)}
-                        />
-                      )}
-                    </div>
+                    )}
+                    {f.reason && (
+                      <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+                        <span className="font-semibold">কারণ:</span> {f.reason}
+                        {f.note ? ` — ${f.note}` : ''}
+                      </p>
+                    )}
                   </div>
-                  {f.reason && (
-                    <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-                      <span className="font-semibold">কারণ:</span> {f.reason}
-                      {f.note ? ` — ${f.note}` : ''}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </Group>
+                );
+              })}
+            </div>
+          </section>
 
           {sExams.length > 0 && (
             <Group title="পরীক্ষার ফি">
@@ -328,34 +334,33 @@ function StudentDetail({ student: s }) {
               </div>
             ))}
           </div>
-          <Group title="সাম্প্রতিক হাজিরা">
-            {attLog.length === 0 && <Empty text="হাজিরার রেকর্ড নেই" />}
-            {attLog.map((r) => (
-              <Row key={r.date} title={fmtDate(r.date)}>
-                <Badge tone={ATT_STATUS[r.status]?.tone} dot>
-                  {ATT_STATUS[r.status]?.bn}
-                </Badge>
-              </Row>
-            ))}
-          </Group>
+          {attLog.length === 0 ? <Empty text="হাজিরার রেকর্ড নেই" /> : <AttCalendar log={attLog} />}
         </div>
       )}
 
       {tab === 'info' && (
-        <div className="mt-2">
-          <div className="divide-y divide-slate-100">
+        <div className="mt-4 space-y-4">
+          <InfoCard title="পরিচয়">
             <InfoRow icon={Hash} label="স্টুডেন্ট আইডি" value={s.studentId} mono />
+            <InfoRow icon={CalendarDays} label="ভর্তির তারিখ" value={fmtDate(s.admissionDate)} />
+          </InfoCard>
+          <InfoCard title="অভিভাবক">
             <InfoRow icon={UserRound} label="পিতার নাম" value={s.fatherName} />
             <InfoRow icon={Users} label="মাতার নাম" value={s.motherName} />
             <InfoRow icon={Phone} label="অভিভাবকের ফোন" value={s.guardianPhone} mono />
             <InfoRow icon={MapPin} label="ঠিকানা" value={s.address} />
-            <InfoRow icon={CalendarDays} label="ভর্তির তারিখ" value={fmtDate(s.admissionDate)} />
-            <InfoRow icon={Wallet} label="মাসিক বেতন" value={taka(s.monthlyFee || settings.defaultMonthlyFee)} />
+          </InfoCard>
+          <InfoCard title="ফি">
+            <InfoRow icon={Wallet} label="মাসিক বেতন" value={taka(s.tuitionFee ?? (s.monthlyFee || settings.defaultMonthlyFee))} />
+            {s.transport && Number(s.transportFee) > 0 && <InfoRow icon={Wallet} label="পরিবহন ফি" value={`${taka(s.transportFee)} / মাস`} />}
             <InfoRow
               icon={CalendarDays}
               label="অনুপস্থিতির জরিমানা (প্রতি দিন)"
               value={`${taka(absenceFineFor(s))}${s.absentFine === '' || s.absentFine == null ? ' · ক্লাসের নিয়ম' : ''}`}
             />
+          </InfoCard>
+
+          <InfoCard title="পোর্টাল">
             <div className="flex items-center gap-3 py-3">
               <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-500">
                 <KeyRound className="h-[18px] w-[18px]" />
@@ -367,49 +372,31 @@ function StudentDetail({ student: s }) {
               <button type="button" onClick={() => setShowPin((v) => !v)} className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 active:bg-slate-100" aria-label="পিন দেখুন">
                 {showPin ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
-              {s.guardianPhone && (
-                <Button
-                  as="a"
-                  variant="soft-success"
-                  size="xs"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  href={waLink(s.guardianPhone, portalShareMessage)}
-                  icon={WhatsAppIcon}
-                  title="WhatsApp এ পিন পাঠান"
-                >
-                  শেয়ার
-                </Button>
-              )}
               <Button variant="secondary" size="xs" icon={RefreshCw} onClick={newPin}>
                 নতুন পিন
               </Button>
             </div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            {s.guardianPhone && (
-              <Button
-                as="a"
-                variant="soft-success"
-                className="flex-1"
-                target="_blank"
-                rel="noopener noreferrer"
-                href={waLink(s.guardianPhone, portalShareMessage)}
-              >
-                <WhatsAppIcon className="h-5 w-5" /> পিন ও লিংক পাঠান
+            <div className="flex gap-2 py-3">
+              {s.guardianPhone && (
+                <Button
+                  as="a"
+                  variant="soft-success"
+                  size="sm"
+                  className="flex-1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  href={waLink(s.guardianPhone, portalShareMessage)}
+                >
+                  <WhatsAppIcon className="h-4 w-4" /> পিন ও লিংক পাঠান
+                </Button>
+              )}
+              <Button type="button" variant="secondary" size="sm" icon={Copy} className={s.guardianPhone ? '' : 'flex-1'} onClick={copyPortalInfo}>
+                কপি
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="secondary"
-              icon={Copy}
-              className={s.guardianPhone ? '' : 'flex-1'}
-              onClick={copyPortalInfo}
-            >
-              কপি
-            </Button>
-          </div>
-          <Button variant="soft-danger" icon={Trash2} block className="mt-2.5" onClick={remove}>
+            </div>
+          </InfoCard>
+
+          <Button variant="soft-danger" icon={Trash2} block onClick={remove}>
             শিক্ষার্থী মুছে ফেলুন
           </Button>
         </div>
@@ -559,6 +546,109 @@ const Row = ({ title, sub, children }) => (
     <div className="flex flex-col items-end gap-1">{children}</div>
   </div>
 );
+const CAL_CELL = {
+  Present: 'bg-emerald-500 text-white',
+  Absent: 'bg-rose-500 text-white',
+  Late: 'bg-amber-400 text-white',
+  Leave: 'bg-sky-500 text-white',
+};
+const WEEK_BN = ['র', 'সো', 'ম', 'বু', 'বৃ', 'শু', 'শ'];
+
+/** Month calendar: one box per day, coloured by that day's attendance (log is newest first) */
+function AttCalendar({ log }) {
+  const byDate = useMemo(() => Object.fromEntries(log.map((r) => [r.date, r.status])), [log]);
+  const [ym, setYm] = useState(() => {
+    const [y, m] = log[0].date.split('-').map(Number);
+    return { y, m: m - 1 };
+  });
+  const [picked, setPicked] = useState(null);
+
+  const first = new Date(ym.y, ym.m, 1).getDay();
+  const days = new Date(ym.y, ym.m + 1, 0).getDate();
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const keyOf = (d) => `${ym.y}-${pad2(ym.m + 1)}-${pad2(d)}`;
+  const oldest = log[log.length - 1].date.slice(0, 7);
+  const newest = log[0].date.slice(0, 7);
+  const cur = `${ym.y}-${pad2(ym.m + 1)}`;
+  const go = (delta) => {
+    const d = new Date(ym.y, ym.m + delta, 1);
+    setYm({ y: d.getFullYear(), m: d.getMonth() });
+    setPicked(null);
+  };
+  const monthCount = { Present: 0, Absent: 0, Late: 0, Leave: 0 };
+  for (let d = 1; d <= days; d += 1) {
+    const st = byDate[keyOf(d)];
+    if (st) monthCount[st] += 1;
+  }
+
+  return (
+    <div className="rounded-3xl bg-slate-50 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <button type="button" aria-label="আগের মাস" disabled={cur <= oldest} onClick={() => go(-1)} className="press grid h-9 w-9 place-items-center rounded-xl text-slate-500 active:bg-slate-100 disabled:opacity-30">
+          <ChevronRight className="h-5 w-5 rotate-180" />
+        </button>
+        <p className="text-[15px] font-bold text-ink">
+          {monthBn(EN_MONTHS[ym.m])} {ym.y}
+        </p>
+        <button type="button" aria-label="পরের মাস" disabled={cur >= newest} onClick={() => go(1)} className="press grid h-9 w-9 place-items-center rounded-xl text-slate-500 active:bg-slate-100 disabled:opacity-30">
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5">
+        {WEEK_BN.map((w) => (
+          <p key={w} className="pb-0.5 text-center text-[11.5px] font-semibold text-slate-400">
+            {w}
+          </p>
+        ))}
+        {Array.from({ length: first }, (_, i) => (
+          <span key={`e${i}`} />
+        ))}
+        {Array.from({ length: days }, (_, i) => {
+          const d = i + 1;
+          const k = keyOf(d);
+          const st = byDate[k];
+          return (
+            <button
+              key={k}
+              type="button"
+              disabled={!st}
+              onClick={() => setPicked(k)}
+              className={cx(
+                'tabular grid aspect-square place-items-center rounded-lg text-[13px] font-bold transition',
+                st ? CAL_CELL[st] : 'bg-slate-50 text-slate-300',
+                picked === k && 'ring-2 ring-ink ring-offset-1',
+              )}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-slate-500">
+        {ATT_ORDER.map((k) => (
+          <span key={k} className="flex items-center gap-1">
+            <span className={cx('h-3 w-3 rounded', CAL_CELL[k].split(' ')[0])} />
+            {ATT_STATUS[k].bn} <b className="tabular text-slate-700">{monthCount[k]}</b>
+          </span>
+        ))}
+      </div>
+      {picked && (
+        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[13.5px] font-semibold text-ink">
+          {fmtDate(picked)} — {ATT_STATUS[byDate[picked]]?.bn}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const InfoCard = ({ title, children }) => (
+  <section>
+    <p className="mb-1.5 px-1 text-[13px] font-bold tracking-wide text-slate-400">{title}</p>
+    <div className="divide-y divide-slate-100 rounded-3xl bg-slate-50 px-4">{children}</div>
+  </section>
+);
 const Empty = ({ text }) => <p className="py-3 text-[14px] text-slate-400">{text}</p>;
 
 /* ───────────────────────── Add / edit student ───────────────────────── */
@@ -590,7 +680,10 @@ function StudentForm({ editing }) {
     if (editing) {
       return {
         ...editing,
-        monthlyFee: editing.monthlyFee != null && editing.monthlyFee !== '' ? editing.monthlyFee : settings.defaultMonthlyFee,
+        // monthlyFee stored on the student is the total (tuition + transport); the form edits the parts
+        monthlyFee: editing.tuitionFee ?? (editing.monthlyFee != null && editing.monthlyFee !== '' ? editing.monthlyFee : settings.defaultMonthlyFee),
+        transport: !!editing.transport,
+        transportFee: editing.transportFee ?? '',
         absentFine: editing.absentFine ?? '',
       };
     }
@@ -608,6 +701,8 @@ function StudentForm({ editing }) {
       address: '',
       admissionDate: todayISO(),
       monthlyFee: settings.defaultMonthlyFee,
+      transport: false,
+      transportFee: '',
       pin: String(Math.floor(1000 + Math.random() * 9000)),
       status: 'active',
       absentFine: '',
@@ -626,13 +721,16 @@ function StudentForm({ editing }) {
       err.guardianPhone = '১১ সংখ্যার মোবাইল নম্বর দিন (01XXXXXXXXX)';
     if (!/^\d{4,6}$/.test(String(form.pin))) err.pin = '৪–৬ সংখ্যার পিন দিন';
     if (form.absentFine !== '' && form.absentFine != null && !(Number(form.absentFine) >= 0)) err.absentFine = 'সঠিক পরিমাণ দিন';
+    if (form.transport && !(Number(form.transportFee) > 0)) err.transportFee = 'পরিবহন ফি দিন';
     setErrors(err);
     if (Object.keys(err).length) return;
 
     const { avatar: _photo, ...rest } = form;
     const absentFine = rest.absentFine === '' || rest.absentFine == null ? '' : Number(rest.absentFine);
-    const monthlyFee = form.monthlyFee === '' || form.monthlyFee == null ? Number(settings.defaultMonthlyFee) : Number(form.monthlyFee);
-    const data = { ...rest, roll: Number(form.roll), monthlyFee, absentFine };
+    const tuitionFee = form.monthlyFee === '' || form.monthlyFee == null ? Number(settings.defaultMonthlyFee) : Number(form.monthlyFee);
+    const transportFee = form.transport ? Number(form.transportFee) : 0;
+    // Every fee row uses monthlyFee, so transport is simply part of the monthly total
+    const data = { ...rest, roll: Number(form.roll), tuitionFee, transport: !!form.transport, transportFee, monthlyFee: tuitionFee + transportFee, absentFine };
     if (editing?.avatar) data.avatar = '';
     if (editing) {
       await updateStudent(editing.id, data);
@@ -647,31 +745,27 @@ function StudentForm({ editing }) {
   };
 
   return (
-    <div className="space-y-6 pt-1">
-      <div className="flex items-center gap-4">
-        <RollBadge roll={form.roll || '?'} seed={editing?.id || form.roll} size={76} rounded="rounded-[24px]" />
-        <div className="text-[13.5px] text-slate-500">
-          ছবির বদলে রোল নম্বর দেখানো হবে
-          <br />
-          <span className="text-[12.5px]">রোল বদলালে এখানেও বদলাবে</span>
+    <div className="space-y-4 pt-1">
+      <div className="flex items-center gap-4 rounded-3xl bg-slate-50 p-4">
+        <RollBadge roll={form.roll || '?'} seed={editing?.id || form.roll} size={64} rounded="rounded-2xl" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[16px] font-bold text-ink">{form.name.trim() || (editing ? editing.name : 'নতুন শিক্ষার্থী')}</p>
+          <p className="tabular mt-0.5 text-[12.5px] text-slate-500">
+            {form.roll ? `আইডি ${studentIdFor(classId, form.roll)}` : 'রোল দিন'}
+          </p>
         </div>
       </div>
 
-      <FormSection title="মূল তথ্য">
+      <FormSection icon={UserRound} title="মূল তথ্য">
         <Field label="নাম (বাংলায়) *" error={errors.name}>
           <Input value={form.name} onChange={set('name')} placeholder="যেমন মো: রহিম আহমেদ" />
         </Field>
         <Field label="Name (English)">
           <Input value={form.nameEn || ''} onChange={set('nameEn')} placeholder="e.g. Md. Rahim Ahmed" autoCapitalize="words" />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="রোল *" error={errors.roll}>
-            <Input type="number" inputMode="numeric" value={form.roll} onChange={set('roll')} />
-          </Field>
-          <Field label="স্টুডেন্ট আইডি" hint="রোল থেকে আপনাআপনি">
-            <Input value={form.roll ? studentIdFor(classId, form.roll) : ''} readOnly tabIndex={-1} className="tabular bg-slate-100 text-slate-600" />
-          </Field>
-        </div>
+        <Field label="রোল *" error={errors.roll} hint="স্টুডেন্ট আইডি রোল থেকে আপনাআপনি তৈরি হয়">
+          <Input type="number" inputMode="numeric" value={form.roll} onChange={set('roll')} />
+        </Field>
         {departments.length > 0 && (
           <Field label="বিভাগ">
             <Pills value={form.group} onChange={set('group')} options={departments} />
@@ -689,22 +783,7 @@ function StudentForm({ editing }) {
         )}
       </FormSection>
 
-      <FormSection title="অভিভাবক">
-        <Field label="অভিভাবকের মোবাইল (WhatsApp)" error={errors.guardianPhone}>
-          <Input type="tel" inputMode="tel" value={form.guardianPhone} onChange={set('guardianPhone')} placeholder="01XXXXXXXXX" />
-        </Field>
-        <Field label="পিতার নাম">
-          <Input value={form.fatherName} onChange={set('fatherName')} />
-        </Field>
-        <Field label="মাতার নাম">
-          <Input value={form.motherName} onChange={set('motherName')} />
-        </Field>
-        <Field label="ঠিকানা">
-          <Input value={form.address} onChange={set('address')} placeholder="যেমন ধানমন্ডি, ঢাকা" />
-        </Field>
-      </FormSection>
-
-      <FormSection title="ফি ও পোর্টাল">
+      <FormSection icon={Wallet} title="ফি ও পোর্টাল">
         <div className="grid grid-cols-2 gap-3">
           <Field label="মাসিক বেতন (৳)">
             <Input type="number" inputMode="numeric" value={form.monthlyFee} onChange={set('monthlyFee')} />
@@ -713,6 +792,28 @@ function StudentForm({ editing }) {
             <Input inputMode="numeric" maxLength={6} value={form.pin} onChange={set('pin')} className="tracking-[0.3em]" />
           </Field>
         </div>
+        <Field label="পরিবহন ব্যবহার করে?">
+          <Segmented
+            value={form.transport ? 'yes' : 'no'}
+            onChange={(v) => setForm((f) => ({ ...f, transport: v === 'yes' }))}
+            options={[
+              { value: 'no', label: 'না' },
+              { value: 'yes', label: 'হ্যাঁ' },
+            ]}
+          />
+        </Field>
+        {form.transport && (
+          <>
+            <Field label="পরিবহন ফি (৳/মাস)" error={errors.transportFee}>
+              <Input type="number" inputMode="numeric" min={0} value={form.transportFee} onChange={set('transportFee')} placeholder="যেমন 500" />
+            </Field>
+            <div className="tabular space-y-1 rounded-2xl bg-brand-50 px-4 py-3 text-[13.5px] text-brand-900">
+              <div className="flex justify-between"><span>মাসিক বেতন</span><b>{taka(Number(form.monthlyFee) || 0)}</b></div>
+              <div className="flex justify-between"><span>পরিবহন</span><b>{taka(Number(form.transportFee) || 0)}</b></div>
+              <div className="flex justify-between border-t border-brand-200/70 pt-1 text-[14.5px]"><span>প্রতি মাসে একসাথে আদায়</span><b>{taka((Number(form.monthlyFee) || 0) + (Number(form.transportFee) || 0))}</b></div>
+            </div>
+          </>
+        )}
         <Field
           label="অনুপস্থিতির জরিমানা (৳/দিন)"
           error={errors.absentFine}
@@ -735,6 +836,22 @@ function StudentForm({ editing }) {
         </Field>
       </FormSection>
 
+      <FormSection icon={Users} title="অভিভাবক">
+        <Field label="অভিভাবকের মোবাইল (WhatsApp)" error={errors.guardianPhone}>
+          <Input type="tel" inputMode="tel" value={form.guardianPhone} onChange={set('guardianPhone')} placeholder="01XXXXXXXXX" />
+        </Field>
+        <Field label="পিতার নাম">
+          <Input value={form.fatherName} onChange={set('fatherName')} />
+        </Field>
+        <Field label="মাতার নাম">
+          <Input value={form.motherName} onChange={set('motherName')} />
+        </Field>
+        <Field label="ঠিকানা">
+          <Input value={form.address} onChange={set('address')} placeholder="যেমন ধানমন্ডি, ঢাকা" />
+        </Field>
+      </FormSection>
+
+
       {!editing && (
         <PaidAtAdmission
           checked={paidAtAdmission}
@@ -745,7 +862,7 @@ function StudentForm({ editing }) {
         />
       )}
 
-      <div className="sticky bottom-0 -mx-5 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-5 border-t border-slate-100 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
         <Button size="lg" block onClick={save}>
           {editing ? 'পরিবর্তন সংরক্ষণ' : 'শিক্ষার্থী যুক্ত করুন'}
         </Button>
@@ -770,9 +887,16 @@ const Pills = ({ value, onChange, options }) => (
   </div>
 );
 
-const FormSection = ({ title, children }) => (
-  <section>
-    <p className="mb-3 text-[13px] font-bold uppercase tracking-wide text-slate-400">{title}</p>
+const FormSection = ({ icon: Icon, title, children }) => (
+  <section className="rounded-3xl bg-slate-50 p-4">
+    <div className="mb-4 flex items-center gap-2.5">
+      {Icon && (
+        <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-50 text-brand-600">
+          <Icon className="h-4 w-4" />
+        </span>
+      )}
+      <p className="text-[15px] font-bold text-ink">{title}</p>
+    </div>
     <div className="space-y-4">{children}</div>
   </section>
 );

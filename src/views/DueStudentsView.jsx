@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Phone, Wallet, PartyPopper, MessageSquareText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, FilterButton, SearchBar, Card, RollBadge, Badge, Button, Checkbox, EmptyState, cx, DOCK, DOCK_BOTTOM, CARD_GRID } from '../components/ui';
+import { PageHeader, FilterButton, SearchBar, Card, RollBadge, Badge, EmptyState, cx, CARD_GRID } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { ReasonSheet } from './FeesView';
 import { taka, monthBn, feeStatus, daysLate } from '../lib/format';
@@ -15,7 +15,6 @@ export const DueStudentsView = () => {
   const DEFAULTS = { due: 'all', group: 'All', section: 'All', gender: 'All' };
   const [filters, setFilters] = useState(DEFAULTS);
   const filter = filters.due;
-  const [selected, setSelected] = useState(() => new Set());
   const [reasonFee, setReasonFee] = useState(null);
 
   const dueList = useMemo(
@@ -48,23 +47,6 @@ export const DueStudentsView = () => {
 
   const total = dueList.reduce((a, s) => a + s.totalDue, 0);
   const overdueN = dueList.filter((s) => s.overdue).length;
-  const allSelected = list.length > 0 && list.every((s) => selected.has(s.id));
-
-  const toggle = (id) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-
-  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(list.map((s) => s.id)));
-
-  const send = () => {
-    const targets = selected.size ? dueList.filter((s) => selected.has(s.id)) : list;
-    if (targets.length) openWhatsApp(targets);
-  };
-
   return (
     <div>
       <PageHeader title="বকেয়া ও রিমাইন্ডার" subtitle={`${monthBn(settings.currentMonth)} ${settings.currentYear}`} />
@@ -98,25 +80,14 @@ export const DueStudentsView = () => {
           ]}
         />
       </div>
-      {list.length > 0 && (
-        <button type="button" onClick={toggleAll} className="press mt-3 flex items-center gap-2 text-[13.5px] font-semibold text-slate-600">
-          <Checkbox checked={allSelected} className="h-5 w-5 rounded-md" />
-          সবাইকে বাছুন ({list.length})
-        </button>
-      )}
-
       {list.length === 0 ? (
         <EmptyState icon={PartyPopper} title="কোনো বকেয়া নেই!" text="এই তালিকায় কেউ নেই — দারুণ কাজ।" />
       ) : (
         <div className={cx('mt-3', CARD_GRID)}>
           {list.map((s) => {
-            const on = selected.has(s.id);
             return (
-              <Card key={s.id} className={cx('overflow-hidden transition', on && 'ring-2 ring-brand-500')}>
+              <Card key={s.id} className="overflow-hidden">
                 <div className="flex items-center gap-3 p-4 pb-3">
-                  <button type="button" onClick={() => toggle(s.id)} aria-label="নির্বাচন" className="-m-2 p-2">
-                    <Checkbox checked={on} />
-                  </button>
                   <button type="button" onClick={() => openStudent(s)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                     <RollBadge roll={s.roll} seed={s.id} size={42} />
                     <span className="min-w-0 flex-1">
@@ -158,23 +129,6 @@ export const DueStudentsView = () => {
             );
           })}
         </div>
-      )}
-
-      {list.length > 0 && (
-        <>
-          <div className="h-20" />
-          <div className={DOCK} style={DOCK_BOTTOM}>
-            <div className="flex items-center gap-3 rounded-[22px] bg-ink/95 p-2 pl-4 text-white shadow-2xl backdrop-blur">
-              <p className="min-w-0 flex-1 text-[14px] font-semibold">
-                {selected.size ? `${selected.size} জন নির্বাচিত` : `তালিকার ${list.length} জন`}
-              </p>
-              <Button variant="success" size="sm" onClick={send}>
-                <WhatsAppIcon className="h-4 w-4" />
-                {selected.size ? 'পাঠান' : 'সবাইকে পাঠান'}
-              </Button>
-            </div>
-          </div>
-        </>
       )}
 
       <ReasonSheet fee={reasonFee} onClose={() => setReasonFee(null)} />
