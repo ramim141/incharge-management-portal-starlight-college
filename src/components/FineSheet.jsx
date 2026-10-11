@@ -71,7 +71,7 @@ function FineForm({ fine: f }) {
 
   return (
     <div className="space-y-5 pt-1">
-      <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5 ring-1 ring-slate-200/70">
+      <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5">
         <RollBadge roll={s?.roll ?? f.roll} seed={f.studentId} size={48} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-bold text-ink">{s?.name || `রোল ${f.roll}`}</p>
@@ -87,7 +87,7 @@ function FineForm({ fine: f }) {
           ['পরিশোধ', f.paid, 'text-emerald-600'],
           ['বাকি', due, due > 0 ? 'text-rose-600' : 'text-emerald-600'],
         ].map(([k, v, c]) => (
-          <div key={k} className="rounded-2xl bg-white py-2.5 ring-1 ring-slate-200/70">
+          <div key={k} className="rounded-2xl bg-white py-2.5">
             <p className={cx('tabular text-[16px] font-extrabold', c)}>{taka(v)}</p>
             <p className="text-[12px] text-slate-500">{k}</p>
           </div>

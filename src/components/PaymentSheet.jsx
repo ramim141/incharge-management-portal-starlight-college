@@ -32,14 +32,18 @@ function PaymentBody({ initialStudent }) {
     const keyOf = (m, y) => `${y}-${m}`;
     // Without a class fee start month, months before the student's admission are not owed
     const admitted = feeStartMonth ? '' : String(student.admissionDate || '').slice(0, 7);
+    // Transport is collected with the month but ticked separately, so each month carries its transport part
+    const sT = student.transport ? Number(student.transportFee || 0) : 0;
+    const trOf = (row, due) => Math.min(Number(row?.transport ?? sT) || 0, due);
     const session = feeMonths
       .map(({ month: m, year: y, period }) => {
         const row = own.find((f) => f.month === m && Number(f.year) === y);
         if (!row && admitted && period < admitted) return null;
         if (isBeforeStart(m, y)) return null;
+        const due = row ? Number(row.due || 0) : rate;
         return {
-          key: keyOf(m, y), month: m, year: y, row,
-          due: row ? Number(row.due || 0) : rate,
+          key: keyOf(m, y), month: m, year: y, row, transport: trOf(row, due),
+          due,
           paid: row ? feeStatus(row) === 'Paid' : false,
           future: period > curPeriod,
           past: period < curPeriod,
@@ -49,7 +53,7 @@ function PaymentBody({ initialStudent }) {
       .filter(Boolean);
     const older = own
       .filter((f) => Number(f.due) > 0 && !session.some((x) => x.month === f.month && x.year === Number(f.year)))
-      .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), paid: false, past: true }));
+      .map((row) => ({ key: keyOf(row.month, row.year), month: row.month, year: Number(row.year), row, due: Number(row.due), transport: trOf(row, Number(row.due)), paid: false, past: true }));
     const activeFines = fines.filter((fn) => fn.studentId === student.id && fn.due > 0);
     const dueExam = examFees.find((e) => e.studentId === student.id && e.status === 'Due');
     // Everything that can be waived: separate fines + late fines still owed on monthly fees
@@ -65,9 +69,9 @@ function PaymentBody({ initialStudent }) {
   }, [student, fees, fines, examFees, settings.currentMonth, settings.currentYear, settings.defaultMonthlyFee, feeMonths, feeStartMonth, isBeforeStart]);
 
   // Starts on this month (if unpaid); the in-charge adds or removes months
-  const defaultMonths = (c) => new Set((c?.months || []).filter((m) => m.current && !m.paid && m.due > 0).map((m) => m.key));
+  const defaultMonths = (c) => new Set((c?.months || []).filter((m) => (m.current || (m.past && m.transport > 0 && m.due - m.transport <= 0)) && !m.paid && m.due > 0).map((m) => m.key));
   const [months, setMonths] = useState(() => defaultMonths(ctx));
-  const [sel, setSel] = useState(() => ({ fine: true, exam: false }));
+  const [sel, setSel] = useState(() => ({ fine: true, exam: false, transport: true }));
   const [amount, setAmount] = useState(null); // null = follow selection
   const [method, setMethod] = useState('Cash');
   const [trxId, setTrxId] = useState('');
@@ -88,14 +92,15 @@ function PaymentBody({ initialStudent }) {
   const chosen = ctx && months ? ctx.months.filter((m) => months.has(m.key)) : [];
   // Same month twice in the list (e.g. Jan 2026 and Jan 2027) → show the year on those buttons
   const repeated = new Set((ctx?.months || []).map((m) => m.month).filter((m, i, a) => a.indexOf(m) !== i));
-  const monthly = chosen.reduce((a, m) => a + m.due, 0);
-  const autoTotal = ctx ? monthly + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0) : 0;
+  const transportTotal = chosen.reduce((a, m) => a + (m.transport || 0), 0);
+  const monthly = chosen.reduce((a, m) => a + m.due - (m.transport || 0), 0);
+  const autoTotal = ctx ? monthly + (sel.transport ? transportTotal : 0) + (sel.fine ? ctx.fine : 0) + (sel.exam ? ctx.exam : 0) : 0;
   const total = amount ?? autoTotal;
 
   const pick = (s) => {
     setStudent(s);
     setMonths(null); // filled from the new student's months below
-    setSel({ fine: true, exam: false });
+    setSel({ fine: true, exam: false, transport: true });
     setAmount(null);
   };
   if (ctx && months === null) setMonths(defaultMonths(ctx));
@@ -122,7 +127,14 @@ function PaymentBody({ initialStudent }) {
     if (!student || total <= 0 || saving) return;
     setSaving(true);
     const items = [];
-    chosen.forEach((m) => m.due > 0 && items.push({ description: `${m.month} ${m.year} Monthly Fee`, amount: m.due }));
+    chosen.forEach((m) => {
+      if (m.due <= 0) return;
+      // Transport is part of the month's due; the receipt lists it as its own line
+      const transport = sel.transport ? m.transport || 0 : 0;
+      const monthlyPart = m.due - (m.transport || 0);
+      if (monthlyPart > 0) items.push({ description: `${m.month} ${m.year} Monthly Fee`, amount: monthlyPart });
+      if (transport > 0) items.push({ description: `${m.month} ${m.year} Transport Fee`, amount: transport });
+    });
     if (sel.fine && ctx.fine > 0) items.push({ description: `Fine (${ctx.activeFines.length})`, amount: ctx.fine });
     if (sel.exam && ctx.exam > 0) items.push({ description: ctx.dueExam?.examName || 'Examination Fee', amount: ctx.exam });
     if (items.length === 0 || amount != null) {
@@ -145,6 +157,7 @@ function PaymentBody({ initialStudent }) {
       trxId: method === 'Cash' ? '' : trxId,
       paymentDate: paidAt.toISOString(),
       feeMonths: chosen.map(({ month, year }) => ({ month, year })),
+      withTransport: !!sel.transport,
       fineIds: sel.fine ? ctx.activeFines.map((fn) => fn.id) : null,
       examFeeId: sel.exam && ctx.dueExam ? ctx.dueExam.id : null,
     });
@@ -199,13 +212,14 @@ function PaymentBody({ initialStudent }) {
 
   const totalDue = calculateStudentTotalDue(student.id);
   const items = [
+    ...(ctx.months.some((m) => m.transport > 0) ? [{ k: 'transport', label: 'পরিবহন ফি', amt: transportTotal, empty: 'মাস বাছুন' }] : []),
     { k: 'fine', label: ctx.activeFines.length > 1 ? `জরিমানা (${ctx.activeFines.length}টি)` : 'জরিমানা', amt: ctx.fine },
     { k: 'exam', label: ctx.dueExam?.examName || 'পরীক্ষার ফি', amt: ctx.exam },
   ];
 
   return (
     <div className="space-y-5 pt-1">
-      <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5 ring-1 ring-slate-200/70">
+      <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5">
         <RollBadge roll={student.roll} seed={student.id} size={48} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-bold text-ink">{student.name}</p>
@@ -248,14 +262,15 @@ function PaymentBody({ initialStudent }) {
                   {repeated.has(m.month) && <span className="tabular text-[11.5px] font-semibold opacity-70"> {String(m.year).slice(2)}</span>}
                 </span>
                 <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
-                  {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${taka(m.due)}${m.row?.fine ? '*' : ''}`}
+                  {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${m.due - m.transport > 0 ? taka(m.due - m.transport) : `পরিবহন ${taka(m.transport)}`}${m.row?.fine ? '*' : ''}`}
                 </span>
                 {!m.paid && !on && m.row && (m.past || m.current || Number(m.row.paid) > 0) && (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />
                 )}
                 {!m.paid && (() => {
                   const partial = Number(m.row?.paid) > 0;
-                  const [text, tone] = partial ? ['আংশিক বাকি', 'text-rose-600'] : m.current ? ['এই মাস', 'text-brand-600'] : m.future ? ['অগ্রিম', 'text-amber-600'] : [null];
+                  const transportOnly = partial && m.transport > 0 && m.due - m.transport <= 0;
+                  const [text, tone] = transportOnly ? ['মাসিক ✓ পরিবহন বাকি', 'text-amber-600'] : partial ? ['আংশিক বাকি', 'text-rose-600'] : m.current ? ['এই মাস', 'text-brand-600'] : m.future ? ['অগ্রিম', 'text-amber-600'] : [null];
                   return text && <span className={cx('block text-[10.5px] font-semibold', on ? 'text-white/80' : tone)}>{text}</span>;
                 })()}
               </button>
@@ -289,7 +304,7 @@ function PaymentBody({ initialStudent }) {
                 <Checkbox checked={on} />
                 <span className="flex-1 text-[15px] font-semibold text-ink">{it.label}</span>
                 <span className={cx('tabular text-[15px] font-bold', disabled ? 'text-slate-400' : 'text-ink')}>
-                  {disabled ? 'বাকি নেই' : taka(it.amt)}
+                  {disabled ? it.empty || 'বাকি নেই' : taka(it.amt)}
                 </span>
               </button>
             );
@@ -297,7 +312,7 @@ function PaymentBody({ initialStudent }) {
         </div>
 
         {ctx.waivable > 0 && (
-          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
+          <div className="mt-2 rounded-2xl bg-slate-50 px-4 py-3">
             {!waiveOpen ? (
               <button type="button" onClick={() => setWaiveOpen(true)} className="flex w-full items-center justify-between text-left">
                 <span className="text-[14px] font-semibold text-brand-700">জরিমানা মওকুফ করুন</span>

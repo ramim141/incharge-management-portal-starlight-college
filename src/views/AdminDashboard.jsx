@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import {
   Bell, Search, UserPlus, CalendarCheck, TriangleAlert, ChartColumn, ArrowRight, ReceiptText, Users, Wallet,
-  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, Zap, CreditCard, Phone,
+  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, CreditCard, Phone,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Card, IconButton, Avatar, RollBadge, Badge, Button, Progress, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { AbsenteeSheet } from '../components/AbsenteeSheet';
-import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, toEnDigits } from '../lib/format';
+import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, toEnDigits, waLink } from '../lib/format';
 
 export const AdminDashboard = () => {
   const {
@@ -18,23 +18,8 @@ export const AdminDashboard = () => {
   const { openWhatsApp, openReceipt, openStudentForm, openPayment, toast } = useUI();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [quickRoll, setQuickRoll] = useState('');
   const [todayPaymentsOpen, setTodayPaymentsOpen] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
-
-  const handleQuickPay = (e) => {
-    e.preventDefault();
-    const raw = toEnDigits(quickRoll).trim();
-    if (!raw) return;
-    const r = Number(raw);
-    const s = students.find((x) => Number(x.roll) === r && x.status !== 'inactive');
-    if (!s) {
-      toast(`রোল ${raw} এর কোনো সক্রিয় শিক্ষার্থী পাওয়া যায়নি`, 'error');
-      return;
-    }
-    setQuickRoll('');
-    openPayment(s);
-  };
 
   const today = todayISO();
   const dayOf = (p) => (p.paymentDate ? String(p.paymentDate).slice(0, 10) : '');
@@ -119,51 +104,60 @@ export const AdminDashboard = () => {
         <IconButton icon={Bell} label="নোটিফিকেশন" badge={notifications.length || null} onClick={() => setNotifOpen(true)} />
       </div>
 
-      {/* Quick Search & Quick Pay Bar */}
-      <div className="flex flex-col gap-2.5 sm:flex-row">
-        <button
-          type="button"
-          onClick={() => setSearchOpen(true)}
-          className="press flex h-12 flex-1 items-center gap-3 rounded-2xl bg-white px-4 text-left text-[14.5px] text-slate-400 ring-1 ring-slate-200/80 shadow-card"
-        >
-          <Search className="h-5 w-5" /> রোল, নাম বা ফোন দিয়ে খুঁজুন
-        </button>
-
-        <form onSubmit={handleQuickPay} className="flex h-12 items-center gap-2 rounded-2xl bg-white p-1 pl-3.5 ring-1 ring-slate-200/80 shadow-card sm:w-[260px]">
-          <Zap className="h-4 w-4 shrink-0 text-emerald-600" />
-          <input
-            type="text"
-            inputMode="numeric"
-            value={quickRoll}
-            onChange={(e) => setQuickRoll(e.target.value)}
-            placeholder="কুইক পে: রোল..."
-            className="tabular min-w-0 flex-1 bg-transparent text-[14.5px] font-bold text-ink placeholder:text-[13px] placeholder:font-normal placeholder:text-slate-400 outline-none"
-          />
-          <Button type="submit" size="sm" variant="success" icon={CreditCard} disabled={!quickRoll.trim()}>
-            আদায়
-          </Button>
-        </form>
-      </div>
+      {/* Quick Search */}
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        className="press flex h-12 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left text-[14.5px] text-slate-400 shadow-card transition hover:bg-slate-50/70"
+      >
+        <Search className="h-5 w-5 text-slate-400" />
+        <span className="flex-1">রোল, নাম বা ফোন দিয়ে খুঁজুন</span>
+      </button>
 
       {/* Today's Cash In Hand Bar */}
-      <div className="mt-2.5 flex items-center justify-between rounded-2xl bg-emerald-50/90 px-4 py-2.5 ring-1 ring-emerald-200/70 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm">
-            <Wallet className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-[12px] font-bold text-emerald-800">আজকের ক্যাশ আদায় ({dayNameBn(today)})</p>
-            <p className="tabular text-[17px] font-extrabold text-emerald-950">
-              {taka(todayCollected)} <span className="text-[12px] font-medium text-emerald-700">· {todayPayments.length}টি রশিদ</span>
+      <div
+        className={cx(
+          'mt-3 flex items-center justify-between gap-3 rounded-2xl p-3 px-3.5 ring-1 shadow-card transition',
+          todayPayments.length > 0
+            ? 'bg-emerald-50/90 ring-emerald-200/80 cursor-pointer hover:bg-emerald-100/60'
+            : 'bg-emerald-50/60 ring-emerald-200/60',
+        )}
+        onClick={() => {
+          if (todayPayments.length > 0) setTodayPaymentsOpen(true);
+        }}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-700/25">
+            <Wallet className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[13px] font-bold text-emerald-950">আজকের ক্যাশ আদায়</span>
+              <span className="rounded-md bg-emerald-100/90 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-800">
+                {dayNameBn(today)}
+              </span>
+            </div>
+            <p className="tabular mt-0.5 flex items-baseline gap-1.5 text-[12px] text-emerald-700">
+              <span className="text-[18px] font-extrabold text-emerald-950">
+                {taka(todayCollected)}
+              </span>
+              <span>· {todayPayments.length > 0 ? `${todayPayments.length}টি রশিদ আদায়` : 'আজ এখনো কোনো আদায় হয়নি'}</span>
             </p>
           </div>
         </div>
-        {todayPayments.length > 0 ? (
-          <Button size="xs" variant="success" onClick={() => setTodayPaymentsOpen(true)}>
+
+        {todayPayments.length > 0 && (
+          <Button
+            size="xs"
+            variant="success"
+            className="shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTodayPaymentsOpen(true);
+            }}
+          >
             রশিদ দেখুন
           </Button>
-        ) : (
-          <span className="text-[12px] font-medium text-emerald-700">আজ এখনো আদায় নেই</span>
         )}
       </div>
 
@@ -249,7 +243,7 @@ export const AdminDashboard = () => {
           { label: 'বকেয়া', icon: Wallet, cls: 'bg-rose-50 text-rose-600', onClick: () => setActiveTab('due') },
           { label: 'রিপোর্ট', icon: ChartColumn, cls: 'bg-sky-50 text-sky-600', onClick: () => setActiveTab('reports') },
         ].map((a) => (
-          <button key={a.label} type="button" onClick={a.onClick} className="press flex flex-col items-center gap-1.5 rounded-3xl bg-white py-3.5 ring-1 ring-slate-200/70 shadow-card max-[374px]:rounded-2xl max-[374px]:py-3">
+          <button key={a.label} type="button" onClick={a.onClick} className="press flex flex-col items-center gap-1.5 rounded-3xl bg-white py-3.5 shadow-card max-[374px]:rounded-2xl max-[374px]:py-3">
             <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', a.cls)}>
               <a.icon className="h-[22px] w-[22px]" />
             </span>
@@ -311,9 +305,10 @@ export const AdminDashboard = () => {
                   size="sm"
                   variant="soft-danger"
                   icon={WhatsAppIcon}
+                  className="h-auto min-h-10 py-2.5 px-3 whitespace-normal text-center leading-snug"
                   onClick={() => setAbsentSheetOpen(true)}
                 >
-                  অনুপস্থিত {counts.Absent} জনের অভিভাবককে WhatsApp নোটিফিকেশন পাঠান
+                  অনুপস্থিত {counts.Absent} জনকে WhatsApp নোটিফিকেশন পাঠান
                 </Button>
               </div>
             )}
@@ -336,12 +331,12 @@ export const AdminDashboard = () => {
 
       {/* KPIs */}
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <button type="button" onClick={() => setActiveTab('students')} className="press rounded-3xl bg-white p-4 text-left ring-1 ring-slate-200/70 shadow-card">
+        <button type="button" onClick={() => setActiveTab('students')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
           <Users className="h-5 w-5 text-brand-600" />
           <p className="tabular mt-3 text-[24px] font-extrabold text-ink">{totalStudentsCount}</p>
           <p className="text-[12.5px] text-slate-500">মোট শিক্ষার্থী · {activeStudentsCount} সক্রিয়</p>
         </button>
-        <button type="button" onClick={() => setActiveTab('due')} className="press rounded-3xl bg-white p-4 text-left ring-1 ring-slate-200/70 shadow-card">
+        <button type="button" onClick={() => setActiveTab('due')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
           <Wallet className="h-5 w-5 text-rose-500" />
           <p className="tabular mt-3 text-[24px] font-extrabold text-rose-600 max-[374px]:text-[20px]">{taka(totalDueAcrossAll)}</p>
           <p className="text-[12.5px] text-slate-500">মোট বকেয়া (সব মিলিয়ে)</p>
@@ -454,32 +449,36 @@ function TodayPaymentsSheet({ open, onClose, payments, total }) {
           </span>
         </div>
 
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200/70">
-          {payments.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                onClose();
-                setTimeout(() => openReceipt(p), 80);
-              }}
-              className="flex w-full items-center gap-3 p-3.5 text-left active:bg-slate-50"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
-                <ReceiptText className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14.5px] font-bold text-ink">{p.studentName}</p>
-                <p className="text-[12px] text-slate-500">
-                  রোল {p.roll} · রশিদ: {p.receiptNo} · {p.method}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="tabular text-[15px] font-bold text-emerald-600">+{taka(p.amount)}</p>
-                <span className="text-[11px] text-slate-400">রশিদ দেখুন ›</span>
-              </div>
-            </button>
-          ))}
+        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white">
+          {payments.length === 0 ? (
+            <p className="py-8 text-center text-[13.5px] text-slate-400">আজ এখনো কোনো ক্যাশ আদায় নেই</p>
+          ) : (
+            payments.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setTimeout(() => openReceipt(p), 80);
+                }}
+                className="flex w-full items-center gap-3 p-3.5 text-left active:bg-slate-50"
+              >
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <ReceiptText className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14.5px] font-bold text-ink">{p.studentName}</p>
+                  <p className="text-[12px] text-slate-500">
+                    রোল {p.roll} · রশিদ: {p.receiptNo} · {p.method}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="tabular text-[15px] font-bold text-emerald-600">+{taka(p.amount)}</p>
+                  <span className="text-[11px] text-slate-400">রশিদ দেখুন ›</span>
+                </div>
+              </button>
+            ))
+          )}
         </div>
       </div>
     </Sheet>
@@ -488,7 +487,7 @@ function TodayPaymentsSheet({ open, onClose, payments, total }) {
 
 function SearchSheet({ open, onClose }) {
   const { students, calculateStudentTotalDue } = useApp();
-  const { openStudent, openPayment } = useUI();
+  const { openStudent, openPayment, toast } = useUI();
   const [q, setQ] = useState('');
 
   const results = useMemo(() => {
@@ -514,48 +513,93 @@ function SearchSheet({ open, onClose }) {
       </div>
       {!q && <p className="py-10 text-center text-[14px] text-slate-400">যেমন: 105, Rahim, 0171…</p>}
       {q && results.length === 0 && <EmptyState icon={Search} title="কিছু পাওয়া যায়নি" text={`"${q}" এর সাথে মেলে এমন কেউ নেই`} />}
-      <div className="divide-y divide-slate-100">
+
+      <div className="space-y-3 pt-1">
         {results.map((s) => {
           const due = calculateStudentTotalDue(s.id);
           return (
             <div
               key={s.id}
-              onClick={() => {
-                onClose();
-                setTimeout(() => openStudent(s), 80);
-              }}
-              className="flex w-full cursor-pointer items-center gap-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
+              className="overflow-hidden rounded-2xl bg-white shadow-card transition"
             >
-              <RollBadge roll={s.roll} seed={s.id} size={44} />
-              <div className="min-w-0 flex-1">
-                <span className="block truncate text-[15.5px] font-semibold text-ink">{s.name}</span>
-                <span className="block text-[12.5px] text-slate-500">
-                  {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ')}
-                </span>
+              {/* Student Header & Info (tap to view profile) */}
+              <div
+                onClick={() => {
+                  onClose();
+                  setTimeout(() => openStudent(s), 80);
+                }}
+                className="flex cursor-pointer items-center gap-3 p-3.5 transition active:bg-slate-50/70"
+              >
+                <RollBadge roll={s.roll} seed={s.id} size={44} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15.5px] font-bold text-ink">
+                    {s.name}
+                  </p>
+                  <p className="mt-0.5 truncate text-[12.5px] text-slate-500">
+                    {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ') || 'তথ্য নেই'}
+                  </p>
+                </div>
+
+                <div className="shrink-0 text-right">
+                  {due > 0 ? (
+                    <Badge tone="red">{taka(due)}</Badge>
+                  ) : (
+                    <Badge tone="green">পরিশোধিত</Badge>
+                  )}
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">✓</Badge>}
-                <Button
-                  size="xs"
-                  variant="soft-success"
-                  icon={CreditCard}
-                  onClick={() => {
+
+              {/* Bottom action bar */}
+              <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onClose();
                     setTimeout(() => openPayment(s), 80);
                   }}
-                  title="টাকা আদায়"
+                  className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
                 >
-                  আদায়
-                </Button>
-                {s.guardianPhone && (
-                  <a
-                    href={`tel:${s.guardianPhone}`}
-                    className="grid h-8 w-8 place-items-center rounded-xl bg-sky-50 text-sky-600 active:bg-sky-100"
-                    title="কল করুন"
-                  >
-                    <Phone className="h-3.5 w-3.5" />
-                  </a>
-                )}
+                  <CreditCard className="h-4 w-4" /> টাকা আদায়
+                </button>
+
+                <a
+                  href={s.guardianPhone ? `tel:${s.guardianPhone}` : undefined}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!s.guardianPhone) {
+                      e.preventDefault();
+                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                    }
+                  }}
+                  title="কল করুন"
+                  className={cx(
+                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                    s.guardianPhone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
+                  )}
+                >
+                  <Phone className="h-[18px] w-[18px]" />
+                </a>
+
+                <a
+                  href={s.guardianPhone ? waLink(s.guardianPhone) : undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!s.guardianPhone) {
+                      e.preventDefault();
+                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                    }
+                  }}
+                  title="WhatsApp"
+                  className={cx(
+                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                    s.guardianPhone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
+                  )}
+                >
+                  <WhatsAppIcon className="h-[18px] w-[18px]" />
+                </a>
               </div>
             </div>
           );

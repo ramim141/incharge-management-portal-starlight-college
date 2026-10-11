@@ -4,11 +4,12 @@ import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, SelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
 import { taka, monthBn, studentTags, fmtDate, todayISO, feeBadge, feeStatus, METHODS, downloadCSV } from '../lib/format';
+import { periodOf } from '../lib/classLogic';
 
 export const ReportsView = () => {
-  const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue } = useApp();
+  const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue, feeMonths } = useApp();
   const { toast, openStudent } = useUI();
-  const [type, setType] = useState('monthly');
+  const [type, setType] = useState('sheet');
 
   const monthFees = fees
     .filter((f) => f.month.toLowerCase() === settings.currentMonth.toLowerCase() && f.year === settings.currentYear)
@@ -44,7 +45,41 @@ export const ReportsView = () => {
     .sort((a, b) => b.due - a.due || a.s.roll - b.s.roll);
   const fineTotal = (k) => fineRows.reduce((a, r) => a + r[k], 0);
 
+  // Fee sheet: one row per student, one column per month (what was paid in that month)
+  const sheet = (() => {
+    const upto = periodOf(settings.currentMonth, settings.currentYear);
+    const cols = new Map();
+    feeMonths.filter((m) => m.period <= upto).forEach((m) => cols.set(m.period, { month: m.month, year: m.year }));
+    fees.filter((f) => !f.beforeStart).forEach((f) => cols.set(periodOf(f.month, Number(f.year)), { month: f.month, year: Number(f.year) }));
+    const months = [...cols.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([period, m]) => ({ period, ...m }));
+    const lateFine = (f) => Math.max(0, Number(f.fine || 0) - Number(f.fineWaived || 0));
+    const rows = students
+      .filter((s) => s.status !== 'inactive')
+      .sort((a, b) => Number(a.roll) - Number(b.roll))
+      .map((s) => {
+        const own = fees.filter((f) => f.studentId === s.id);
+        const transport = s.transport ? Number(s.transportFee) || 0 : 0;
+        const tuition = Number(s.tuitionFee ?? (s.monthlyFee || settings.defaultMonthlyFee)) || 0;
+        const counted = own.filter((f) => !f.beforeStart);
+        const cell = Object.fromEntries(own.map((f) => [periodOf(f.month, Number(f.year)), f]));
+        return {
+          s,
+          tuition,
+          transport,
+          cell,
+          fine: counted.reduce((a, f) => a + lateFine(f), 0),
+          payable: counted.reduce((a, f) => a + Number(f.amount || 0) + lateFine(f), 0),
+          paid: counted.reduce((a, f) => a + Number(f.paid || 0), 0),
+          due: counted.reduce((a, f) => a + Number(f.due || 0), 0),
+        };
+      });
+    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+    const monthTotals = Object.fromEntries(months.map((m) => [m.period, rows.reduce((a, r) => a + Number(r.cell[m.period]?.paid || 0), 0)]));
+    return { months, rows, totals: { tuition: sum('tuition'), transport: sum('transport'), fine: sum('fine'), payable: sum('payable'), paid: sum('paid'), due: sum('due') }, monthTotals };
+  })();
+
   const TITLES = {
+    sheet: 'ফি শিট — শিক্ষার্থী ও মাস অনুযায়ী',
     fines: 'জরিমানার রিপোর্ট',
     monthly: `${monthBn(settings.currentMonth)} ${settings.currentYear} ফি রিপোর্ট`,
     defaulters: 'বকেয়া শিক্ষার্থীর তালিকা',
@@ -52,7 +87,16 @@ export const ReportsView = () => {
   };
 
   const exportCSV = () => {
-    if (type === 'monthly') {
+    if (type === 'sheet') {
+      downloadCSV(
+        `${settings.classCode}_Fee_Sheet.csv`,
+        ['Roll', 'Name', 'Monthly Fee', 'Transport Fee', ...sheet.months.map((m) => `${m.month} ${m.year}`), 'Fine', 'Total Payable', 'Total Paid', 'Due'],
+        [
+          ...sheet.rows.map((r) => [r.s.roll, r.s.name, r.tuition, r.transport, ...sheet.months.map((m) => (r.cell[m.period] ? (r.cell[m.period].beforeStart ? 'Admission' : r.cell[m.period].paid || 0) : '')), r.fine, r.payable, r.paid, r.due]),
+          ['', 'Total', sheet.totals.tuition, sheet.totals.transport, ...sheet.months.map((m) => sheet.monthTotals[m.period]), sheet.totals.fine, sheet.totals.payable, sheet.totals.paid, sheet.totals.due],
+        ],
+      );
+    } else if (type === 'monthly') {
       downloadCSV(
         `${settings.currentMonth}_${settings.currentYear}_Fee_Report.csv`,
         ['Roll', 'Name', 'Group', 'Monthly Fee', 'Fine', 'Paid', 'Due', 'Status', 'Reason', 'Note'],
@@ -84,6 +128,7 @@ export const ReportsView = () => {
           value={type}
           onChange={setType}
           options={[
+            { value: 'sheet', label: 'ফি শিট' },
             { value: 'monthly', label: 'মাসিক ফি' },
             { value: 'defaulters', label: 'বকেয়া', count: defaulters.length },
             { value: 'attendance', label: 'কম হাজিরা', count: lowAtt.length },
@@ -108,6 +153,94 @@ export const ReportsView = () => {
           <p className="mt-1 text-[15px] font-bold">{TITLES[type]}</p>
           <p className="text-[12px]">তৈরির তারিখ: {fmtDate(todayISO())}</p>
         </div>
+
+        {type === 'sheet' && (
+          <>
+            <Card className="p-5">
+              <p className="text-[13px] font-semibold text-slate-500">{TITLES.sheet}</p>
+              <div className="mt-3 grid grid-cols-3 gap-y-4">
+                <Kpi label="মোট প্রদেয়" value={taka(sheet.totals.payable)} />
+                <Kpi label="মোট আদায়" value={taka(sheet.totals.paid)} cls="text-emerald-600" />
+                <Kpi label="মোট বাকি" value={taka(sheet.totals.due)} cls="text-rose-600" />
+              </div>
+              <Progress value={sheet.totals.payable ? (sheet.totals.paid / sheet.totals.payable) * 100 : 0} className="mt-4" />
+            </Card>
+
+            <Card className="overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="tabular w-max min-w-full border-separate border-spacing-0 text-[12.5px]">
+                  <thead>
+                    <tr className="text-[11.5px] font-bold text-slate-500">
+                      <Th sticky="left-0 w-11 min-w-[2.75rem]">রোল</Th>
+                      <Th sticky="left-11 min-w-[8.5rem]" left>নাম</Th>
+                      <Th>মাসিক ফি</Th>
+                      <Th>পরিবহন</Th>
+                      {sheet.months.map((m) => (
+                        <Th key={m.period}>
+                          {monthBn(m.month)}
+                          <span className="block text-[10.5px] font-medium text-slate-400">{m.year}</span>
+                        </Th>
+                      ))}
+                      {sheet.totals.fine > 0 && <Th>জরিমানা</Th>}
+                      <Th strong>মোট প্রদেয়</Th>
+                      <Th strong>মোট আদায়</Th>
+                      <Th strong>বাকি</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sheet.rows.map((r) => (
+                      <tr key={r.s.id}>
+                        <Td sticky="left-0 w-11 min-w-[2.75rem]" cls="font-bold text-slate-400">{r.s.roll}</Td>
+                        <Td sticky="left-11 min-w-[8.5rem]" left>
+                          <button type="button" onClick={() => openStudent(r.s)} className="max-w-[9.5rem] truncate text-left font-semibold text-ink">
+                            {r.s.name}
+                          </button>
+                        </Td>
+                        <Td>{taka(r.tuition)}</Td>
+                        <Td>{r.transport ? taka(r.transport) : <span className="text-slate-300">—</span>}</Td>
+                        {sheet.months.map((m) => {
+                          const f = r.cell[m.period];
+                          if (!f) return <Td key={m.period}><span className="text-slate-300">—</span></Td>;
+                          if (f.beforeStart) return <Td key={m.period}><span className="text-[11px] text-slate-400">ভর্তিতে</span></Td>;
+                          const paid = Number(f.paid || 0);
+                          const full = Number(f.due || 0) <= 0;
+                          return (
+                            <Td key={m.period}>
+                              <span className={cx('font-bold', full ? 'text-emerald-600' : paid > 0 ? 'text-amber-600' : 'text-rose-500')}>{paid > 0 ? taka(paid) : '০'}</span>
+                            </Td>
+                          );
+                        })}
+                        {sheet.totals.fine > 0 && <Td>{r.fine ? taka(r.fine) : <span className="text-slate-300">—</span>}</Td>}
+                        <Td strong>{taka(r.payable)}</Td>
+                        <Td strong cls="text-emerald-600">{taka(r.paid)}</Td>
+                        <Td strong cls={r.due > 0 ? 'text-rose-600' : 'text-emerald-600'}>{r.due > 0 ? taka(r.due) : '✓'}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-extrabold text-ink">
+                      <Td sticky="left-0 w-11 min-w-[2.75rem]" foot />
+                      <Td sticky="left-11 min-w-[8.5rem]" left foot>মোট</Td>
+                      <Td foot>{taka(sheet.totals.tuition)}</Td>
+                      <Td foot>{taka(sheet.totals.transport)}</Td>
+                      {sheet.months.map((m) => (
+                        <Td key={m.period} foot>{taka(sheet.monthTotals[m.period])}</Td>
+                      ))}
+                      {sheet.totals.fine > 0 && <Td foot>{taka(sheet.totals.fine)}</Td>}
+                      <Td foot>{taka(sheet.totals.payable)}</Td>
+                      <Td foot cls="text-emerald-600">{taka(sheet.totals.paid)}</Td>
+                      <Td foot cls="text-rose-600">{taka(sheet.totals.due)}</Td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </Card>
+            <p className="px-1 text-[12px] leading-relaxed text-slate-500">
+              মাসের ঘরে সেই মাসে যত টাকা দিয়েছে তা দেখাচ্ছে। <b className="text-emerald-600">সবুজ</b> = পুরো পরিশোধ, <b className="text-amber-600">হলুদ</b> = আংশিক, <b className="text-rose-500">লাল ০</b> = কিছুই দেয়নি।
+              মোট প্রদেয়তে মাসিক ফি, পরিবহন ও (থাকলে) জরিমানা ধরা হয়েছে।
+            </p>
+          </>
+        )}
 
         {type === 'fines' && (
           <>
@@ -243,6 +376,14 @@ export const ReportsView = () => {
     </div>
   );
 };
+
+// Fee-sheet table cells; the roll + name columns stay pinned while the months scroll sideways
+const Th = ({ children, sticky, left, strong }) => (
+  <th className={cx('whitespace-nowrap border-b border-slate-200 bg-slate-50 px-3 py-2.5', left ? 'text-left' : 'text-right', strong && 'text-ink', sticky && `sticky z-10 ${sticky}`)}>{children}</th>
+);
+const Td = ({ children, sticky, left, strong, foot, cls }) => (
+  <td className={cx('whitespace-nowrap px-3 py-2.5', foot ? 'border-t border-slate-200 bg-slate-50' : 'border-b border-slate-100 bg-white', left ? 'text-left' : 'text-right', strong && 'font-bold', sticky && `sticky z-[1] ${sticky}`, cls)}>{children}</td>
+);
 
 const Kpi = ({ label, value, cls }) => (
   <div>

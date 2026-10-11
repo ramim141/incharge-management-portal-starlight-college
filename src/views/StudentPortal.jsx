@@ -451,7 +451,7 @@ function StudentProfile({ student: s, onExit }) {
                 </div>
               </Card>
 
-              <a href={`tel:${settings.inchargePhone}`} className="no-print press flex items-center gap-3 rounded-3xl bg-white p-4 shadow-card ring-1 ring-slate-200/70">
+              <a href={`tel:${settings.inchargePhone}`} className="no-print press flex items-center gap-3 rounded-3xl bg-white p-4 shadow-card">
                 <span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-600">
                   <Phone className="h-5 w-5" />
                 </span>

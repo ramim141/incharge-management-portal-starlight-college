@@ -3,7 +3,7 @@ import { Zap, MessageSquareText, Wallet, CreditCard, CheckCheck, Undo2 } from 'l
 import { ADMISSION_NOTE, BEFORE_START_LABEL, periodOf } from '../lib/classLogic';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
+import { PageHeader, SelectPill, FilterButton, SearchBar, Card, RollBadge, Badge, Button, IconButton, Sheet, Field, Input, Textarea, EmptyState, cx, CARD_GRID } from '../components/ui';
 import { taka, monthBn, EN_MONTHS, feeBadge, feeStatus, daysLate, studentTags } from '../lib/format';
 
 export const REASONS = [
@@ -291,38 +291,59 @@ export function ReasonSheet({ fee, onClose }) {
   const { toast } = useUI();
   const s = fee ? students.find((x) => x.id === fee.studentId) : null;
   return (
-    <Sheet open={!!fee} onClose={onClose} title="ফি না দেওয়ার কারণ" subtitle={fee ? `${s?.name || ''} · রোল ${fee.roll} · ${monthBn(fee.month)}` : ''}>
+    <Sheet open={!!fee} onClose={onClose} title="ফি সম্পাদনা ও কারণ" subtitle={fee ? `${s?.name || ''} · রোল ${fee.roll} · ${monthBn(fee.month)}` : ''}>
       {fee && <ReasonForm fee={fee} onDone={onClose} updateFee={updateFee} toast={toast} />}
     </Sheet>
   );
 }
 
 function ReasonForm({ fee, onDone, updateFee, toast }) {
+  const [amount, setAmount] = useState(() => String(fee.amount ?? ''));
   const [reason, setReason] = useState(() => REASONS.find((r) => fee.reason?.startsWith(r)) || fee.reason || '');
   const [note, setNote] = useState(fee.note || '');
 
   const save = async () => {
-    await updateFee(fee.id, { reason, note });
-    toast('কারণ সংরক্ষিত হয়েছে');
+    const patch = { reason, note };
+    if (amount !== '' && !isNaN(Number(amount))) {
+      patch.amount = Math.max(0, Number(amount));
+    }
+    await updateFee(fee.id, patch);
+    toast('ফি সংক্রান্ত তথ্য সংরক্ষিত হয়েছে');
     onDone();
   };
 
   return (
     <div className="space-y-5 pt-1">
-      <div className="flex flex-wrap gap-2">
-        {REASONS.map((r) => (
-          <button
-            key={r}
-            type="button"
-            onClick={() => setReason(r)}
-            className={cx(
-              'press h-11 rounded-2xl px-4 text-[14.5px] font-semibold ring-1 ring-inset',
-              reason === r ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-700 ring-slate-200',
-            )}
-          >
-            {r}
-          </button>
-        ))}
+      <Field label="ফি-এর পরিমাণ (৳)">
+        <Input
+          type="number"
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </Field>
+      {fee.paid > 0 && (
+        <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">
+          ইতিমধ্যে {taka(fee.paid)} পরিশোধ হয়েছে
+        </p>
+      )}
+      <div>
+        <p className="mb-2 text-[13.5px] font-semibold text-slate-700">না দেওয়ার কারণ (যদি থাকে)</p>
+        <div className="flex flex-wrap gap-2">
+          {REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setReason(r)}
+              className={cx(
+                'press h-11 rounded-2xl px-4 text-[14.5px] font-semibold ring-1 ring-inset',
+                reason === r ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white text-slate-700 ring-slate-200',
+              )}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
       </div>
       <div>
         <p className="mb-1.5 text-[13.5px] font-semibold text-slate-700">ইনচার্জের নোট (শুধু আপনি দেখবেন)</p>
@@ -336,9 +357,9 @@ function ReasonForm({ fee, onDone, updateFee, toast }) {
             onDone();
           }}
         >
-          মুছে দিন
+          কারণ মুছুন
         </Button>
-        <Button onClick={save} disabled={!reason}>
+        <Button onClick={save}>
           সংরক্ষণ
         </Button>
       </div>

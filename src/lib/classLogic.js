@@ -40,6 +40,8 @@ export function newFeeRow(student, settings, month = settings.currentMonth, year
     month,
     year,
     amount,
+    // the transport part of `amount` (collected together with the monthly fee, shown separately)
+    transport: student.transport ? Number(student.transportFee || 0) : 0,
     paid: 0,
     due: amount,
     fine: 0,
