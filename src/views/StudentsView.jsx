@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Download, UserPlus, Users, ChevronRight, Phone } from 'lucide-react';
+import { Download, UserPlus, Users, Phone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, SearchBar, FilterButton, Card, RollBadge, Badge, IconButton, EmptyState, Button, cx, CONTAINER, GUTTER } from '../components/ui';
+import { PageHeader, SearchBar, FilterButton, Card, RollBadge, Badge, IconButton, EmptyState, Button, cx, CONTAINER, GUTTER, CARD_GRID } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { taka, studentTags, downloadCSV, todayISO, waLink } from '../lib/format';
 import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
@@ -93,59 +93,85 @@ export const StudentsView = () => {
           }
         />
       ) : (
-        <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
+        <div className={cx('mt-3', CARD_GRID)}>
           {filtered.map(({ s, due, att }) => (
-            <div
-              key={s.id}
-              onClick={() => openStudent(s)}
-              className="flex w-full cursor-pointer items-center gap-3 px-4 py-3.5 text-left transition hover:bg-slate-50/80 active:bg-slate-100/70 md:border-b md:border-slate-100 md:odd:border-r"
-            >
-              <RollBadge roll={s.roll} seed={s.id} size={46} />
-              <div className="min-w-0 flex-1">
-                <p className={cx('truncate text-[15.5px] font-semibold', s.status === 'inactive' ? 'text-slate-400' : 'text-ink')}>{s.name}</p>
-                <p className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12.5px] text-slate-500">
-                  {studentTags(s) && (
-                    <>
-                      {studentTags(s)}
-                      <span className="text-slate-300">•</span>
-                    </>
-                  )}
-                  <span className={cx('tabular font-semibold', att.totalClasses === 0 ? 'text-slate-400' : att.percentage >= 75 ? 'text-emerald-600' : 'text-rose-600')}>
-                    হাজিরা {Math.round(att.percentage)}%
-                  </span>
-                </p>
-              </div>
+            <Card key={s.id} className="overflow-hidden transition hover:shadow-card">
+              {/* Top info area: Clicking opens student profile */}
+              <div
+                onClick={() => openStudent(s)}
+                className="flex cursor-pointer items-center gap-3 p-3.5 transition active:bg-slate-50/70"
+              >
+                <RollBadge roll={s.roll} seed={s.id} size={46} />
+                <div className="min-w-0 flex-1">
+                  {/* Name */}
+                  <p className={cx('text-[15.5px] font-bold leading-snug', s.status === 'inactive' ? 'text-slate-400' : 'text-ink')}>
+                    {s.name}
+                  </p>
 
-              <div className="flex shrink-0 items-center gap-1.5">
-                {due > 0 ? <Badge tone="red">{taka(due)}</Badge> : <Badge tone="green">পরিশোধিত</Badge>}
-
-                {s.guardianPhone && (
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <a
-                      href={`tel:${s.guardianPhone}`}
-                      aria-label="অভিভাবককে কল করুন"
-                      className="press grid h-9 w-9 place-items-center rounded-xl bg-sky-50 text-sky-600 hover:bg-sky-100"
-                      title="কল করুন"
-                    >
-                      <Phone className="h-4 w-4" />
-                    </a>
-                    <a
-                      href={waLink(s.guardianPhone)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label="WhatsApp মেসেজ"
-                      className="press grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                      title="WhatsApp"
-                    >
-                      <WhatsAppIcon className="h-4 w-4" />
-                    </a>
+                  {/* Niche bibag & attendance */}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] text-slate-500">
+                    {studentTags(s) && (
+                      <>
+                        <span>{studentTags(s)}</span>
+                        <span className="text-slate-300">•</span>
+                      </>
+                    )}
+                    <span className={cx('tabular font-semibold', att.totalClasses === 0 ? 'text-slate-400' : att.percentage >= 75 ? 'text-emerald-600' : 'text-rose-600')}>
+                      হাজিরা {Math.round(att.percentage)}%
+                    </span>
                   </div>
-                )}
-                <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+                </div>
+
+                {/* Right side a tk */}
+                <div className="shrink-0 text-right">
+                  {due > 0 ? (
+                    <Badge tone="red">{taka(due)}</Badge>
+                  ) : (
+                    <Badge tone="green">পরিশোধিত</Badge>
+                  )}
+                </div>
               </div>
-            </div>
+
+              {/* Sobar niche duita button: Call and WhatsApp */}
+              <div className="grid grid-cols-2 border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
+                <a
+                  href={s.guardianPhone ? `tel:${s.guardianPhone}` : undefined}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!s.guardianPhone) {
+                      e.preventDefault();
+                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                    }
+                  }}
+                  className={cx(
+                    'press flex h-10 items-center justify-center gap-1.5 text-[13px] font-semibold transition',
+                    s.guardianPhone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 cursor-not-allowed'
+                  )}
+                >
+                  <Phone className="h-4 w-4" /> কল
+                </a>
+                <a
+                  href={s.guardianPhone ? waLink(s.guardianPhone) : undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!s.guardianPhone) {
+                      e.preventDefault();
+                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                    }
+                  }}
+                  className={cx(
+                    'press flex h-10 items-center justify-center gap-1.5 text-[13px] font-semibold transition',
+                    s.guardianPhone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 cursor-not-allowed'
+                  )}
+                >
+                  <WhatsAppIcon className="h-4 w-4" /> WhatsApp
+                </a>
+              </div>
+            </Card>
           ))}
-        </Card>
+        </div>
       )}
 
       <div

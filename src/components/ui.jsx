@@ -211,19 +211,21 @@ const BTN_SIZE = {
 };
 
 export function Button({ variant = 'primary', size = 'md', icon: Icon, block, className, children, as: As = 'button', ...rest }) {
+  const isNoWrap = !className?.includes('whitespace-normal') && !className?.includes('whitespace-wrap');
   return (
     <As
       {...(As === 'button' ? { type: 'button' } : {})}
       {...rest}
       className={cx(
-        'press inline-flex items-center justify-center font-semibold whitespace-nowrap disabled:cursor-not-allowed',
+        'press inline-flex items-center justify-center font-semibold disabled:cursor-not-allowed',
+        isNoWrap && 'whitespace-nowrap',
         BTN[variant],
         BTN_SIZE[size],
         block && 'w-full',
         className,
       )}
     >
-      {Icon && <Icon className={size === 'xs' || size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'} strokeWidth={2.2} />}
+      {Icon && <Icon className={size === 'xs' || size === 'sm' ? 'h-4 w-4 shrink-0' : 'h-5 w-5 shrink-0'} strokeWidth={2.2} />}
       {children}
     </As>
   );

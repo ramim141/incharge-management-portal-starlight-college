@@ -177,12 +177,57 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const updateStudent = async (id, patch) => {
     const old = students.find((s) => s.id === id) || {};
     const merged = { ...old, ...patch };
-    const studentId = studentIdFor(classId, merged.roll);
+    const newRoll = Number(merged.roll);
+    const studentId = studentIdFor(classId, newRoll);
     const key = portalKey(studentId, merged.pin);
-    const { id: _ignore, ...data } = { ...patch, roll: Number(merged.roll), studentId, portalKey: key };
+    const { id: _ignore, ...data } = { ...patch, roll: newRoll, studentId, portalKey: key };
     if (key !== old.portalKey) data.portalHash = null;
     const ops = [{ type: 'merge', path: P('students', id), data }];
     if (old.portalKey && old.portalKey !== key) ops.push({ type: 'delete', path: ['portal', old.portalKey] });
+
+    const rollChanged = old.roll != null && newRoll !== Number(old.roll);
+    const hasFeePatch = patch.monthlyFee !== undefined && patch.monthlyFee !== null && patch.monthlyFee !== '';
+    const newMonthlyFee = hasFeePatch ? Number(patch.monthlyFee) : null;
+    const feeChanged = newMonthlyFee !== null && (old.monthlyFee == null || Number(old.monthlyFee) !== newMonthlyFee);
+
+    // Update existing fee rows for this student
+    fees.filter((f) => f.studentId === id).forEach((f) => {
+      const feePatch = {};
+      if (rollChanged) {
+        feePatch.roll = newRoll;
+      }
+      // If monthlyFee changed, update all unpaid/due months (months not fully paid and not before fee start)
+      if (feeChanged && !f.beforeStart && f.status !== 'Paid') {
+        const fine = Number(f.fine || 0);
+        const fineWaived = Number(f.fineWaived || 0);
+        const paid = Number(f.paid || 0);
+        const due = Math.max(0, newMonthlyFee + fine - fineWaived - paid);
+        let status = f.status;
+        if (due === 0 && (paid > 0 || newMonthlyFee === 0)) status = 'Paid';
+        else if (paid > 0 && status !== 'Overdue') status = 'Partial';
+        else if (status === 'Paid') status = 'Due';
+        feePatch.amount = newMonthlyFee;
+        feePatch.due = due;
+        feePatch.status = status;
+      }
+      if (Object.keys(feePatch).length) {
+        ops.push({ type: 'merge', path: P('fees', f.id), data: feePatch });
+      }
+    });
+
+    // If roll changed, update roll across other student sub-collections
+    if (rollChanged) {
+      examFees.filter((e) => e.studentId === id).forEach((e) => {
+        ops.push({ type: 'merge', path: P('examFees', e.id), data: { roll: newRoll } });
+      });
+      payments.filter((p) => p.studentId === id).forEach((p) => {
+        ops.push({ type: 'merge', path: P('payments', p.id), data: { roll: newRoll } });
+      });
+      fines.filter((fn) => fn.studentId === id).forEach((fn) => {
+        ops.push({ type: 'merge', path: P('fines', fn.id), data: { roll: newRoll } });
+      });
+    }
+
     await write(ops);
   };
 
@@ -196,7 +241,25 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     await write(ops);
   };
 
-  const updateFee = (id, patch) => write([{ type: 'merge', path: P('fees', id), data: patch }]);
+  const updateFee = (id, patch) => {
+    const old = fees.find((f) => f.id === id);
+    const data = { ...patch };
+    if (patch.amount !== undefined && old) {
+      const amount = Number(patch.amount);
+      const fine = Number(patch.fine ?? old.fine ?? 0);
+      const fineWaived = Number(patch.fineWaived ?? old.fineWaived ?? 0);
+      const paid = Number(patch.paid ?? old.paid ?? 0);
+      const due = Math.max(0, amount + fine - fineWaived - paid);
+      let status = patch.status ?? old.status;
+      if (due === 0 && (paid > 0 || amount === 0)) status = 'Paid';
+      else if (paid > 0 && status !== 'Overdue') status = 'Partial';
+      else if (status === 'Paid') status = 'Due';
+      data.amount = amount;
+      data.due = due;
+      data.status = status;
+    }
+    return write([{ type: 'merge', path: P('fees', id), data }]);
+  };
 
   /** Every fee month of the class from its start up to the end of the session (see feeMonthRange) */
   const feeMonths = useMemo(() => feeMonthRange({ feeStartMonth, currentMonth, currentYear }), [feeStartMonth, currentMonth, currentYear]);

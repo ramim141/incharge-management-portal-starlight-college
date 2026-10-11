@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
+import { Sheet, RollBadge, Badge, Button, IconButton, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
 import {
@@ -33,6 +33,7 @@ function StudentDetail({ student: s }) {
   const [tab, setTab] = useState('fees');
   const [showPin, setShowPin] = useState(false);
   const [waiving, setWaiving] = useState(false);
+  const [editingFee, setEditingFee] = useState(null);
 
   const att = getStudentAttendanceStats(s.id);
   const due = calculateStudentTotalDue(s.id);
@@ -233,11 +234,23 @@ function StudentDetail({ student: s }) {
                         {f.fine ? ` · জরিমানা ${taka(f.fine)}${f.fineWaived ? ` (মওকুফ ${taka(f.fineWaived)})` : ''}` : ''} · দিয়েছে {taka(f.paid)}
                       </p>
                     </div>
-                    <div className="text-right">
-                      <Badge tone={feeBadge(f, st).tone} dot>
-                        {feeBadge(f, st).bn}
-                      </Badge>
-                      {Number(f.due) > 0 && <p className="tabular mt-1 text-[13px] font-bold text-rose-600">{taka(f.due)}</p>}
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        <Badge tone={feeBadge(f, st).tone} dot>
+                          {feeBadge(f, st).bn}
+                        </Badge>
+                        {Number(f.due) > 0 && <p className="tabular mt-1 text-[13px] font-bold text-rose-600">{taka(f.due)}</p>}
+                      </div>
+                      {st !== 'Paid' && (
+                        <IconButton
+                          icon={Pencil}
+                          label="ফি সম্পাদনা"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 text-slate-400 hover:text-ink active:bg-slate-100"
+                          onClick={() => setEditingFee(f)}
+                        />
+                      )}
                     </div>
                   </div>
                   {f.reason && (
@@ -404,7 +417,82 @@ function StudentDetail({ student: s }) {
       <Sheet open={waiving} onClose={() => setWaiving(false)} title="জরিমানা মওকুফ" subtitle={`${s.name} · রোল ${s.roll}`}>
         {waiving && <WaiveForm student={s} due={fineSummary.due} onDone={() => setWaiving(false)} />}
       </Sheet>
+      {editingFee && (
+        <FeeEditSheet
+          key={editingFee.id}
+          fee={editingFee}
+          student={s}
+          open={!!editingFee}
+          onClose={() => setEditingFee(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function FeeEditSheet({ fee, student, open, onClose }) {
+  const { updateFee } = useApp();
+  const { toast } = useUI();
+  const [amount, setAmount] = useState(() => String(fee?.amount ?? ''));
+  const [reason, setReason] = useState(() => fee?.reason || '');
+  const [note, setNote] = useState(() => fee?.note || '');
+  const [saving, setSaving] = useState(false);
+
+  if (!fee) return null;
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    const patch = { reason, note };
+    if (amount !== '' && !isNaN(Number(amount))) {
+      patch.amount = Math.max(0, Number(amount));
+    }
+    await updateFee(fee.id, patch);
+    setSaving(false);
+    toast(`${monthBn(fee.month)} মাসের ফি আপডেট হয়েছে`);
+    onClose();
+  };
+
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={`${monthBn(fee.month)} ${fee.year} ফি সম্পাদনা`}
+      subtitle={`${student?.name || ''} (রোল ${fee.roll})`}
+    >
+      <div className="space-y-4 pt-1">
+        <Field label="ফি-এর পরিমাণ (৳)">
+          <Input
+            type="number"
+            inputMode="numeric"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </Field>
+        {fee.paid > 0 && (
+          <p className="rounded-xl bg-emerald-50 px-3 py-2 text-[13px] text-emerald-700">
+            ইতিমধ্যে {taka(fee.paid)} পরিশোধ হয়েছে
+          </p>
+        )}
+        <Field label="ফি না দেওয়ার / কমানোর কারণ">
+          <Input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="যেমন: বিশেষ ছাড় বা মওকুফ"
+          />
+        </Field>
+        <Field label="নোট (ঐচ্ছিক)">
+          <Input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="অতিরিক্ত মন্তব্য"
+          />
+        </Field>
+        <Button block size="lg" onClick={save} disabled={saving}>
+          সংরক্ষণ করুন
+        </Button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -499,7 +587,13 @@ function StudentForm({ editing }) {
   const sections = settings.sections || [];
 
   const [form, setForm] = useState(() => {
-    if (editing) return { ...editing };
+    if (editing) {
+      return {
+        ...editing,
+        monthlyFee: editing.monthlyFee != null && editing.monthlyFee !== '' ? editing.monthlyFee : settings.defaultMonthlyFee,
+        absentFine: editing.absentFine ?? '',
+      };
+    }
     const nextRoll = students.length ? Math.max(...students.map((s) => Number(s.roll) || 100)) + 1 : 101;
     return {
       name: '',
@@ -537,7 +631,8 @@ function StudentForm({ editing }) {
 
     const { avatar: _photo, ...rest } = form;
     const absentFine = rest.absentFine === '' || rest.absentFine == null ? '' : Number(rest.absentFine);
-    const data = { ...rest, roll: Number(form.roll), monthlyFee: Number(form.monthlyFee), absentFine };
+    const monthlyFee = form.monthlyFee === '' || form.monthlyFee == null ? Number(settings.defaultMonthlyFee) : Number(form.monthlyFee);
+    const data = { ...rest, roll: Number(form.roll), monthlyFee, absentFine };
     if (editing?.avatar) data.avatar = '';
     if (editing) {
       await updateStudent(editing.id, data);
