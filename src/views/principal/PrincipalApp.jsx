@@ -3,7 +3,7 @@ import { CLASS_INDEX_PATH, buildClassIndex } from '../../lib/classIndex';
 import {
   House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, Mail, KeyRound,
   Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard, Upload,
-  Search, X,
+  Search, X, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
@@ -15,10 +15,10 @@ import {
 import { AccountSheet } from '../../components/AccountSheets';
 import { useBackHandler } from '../../lib/backstack';
 const StudentImport = React.lazy(() => import('./StudentImport').then((m) => ({ default: m.StudentImport })));
-import { taka, monthBn, EN_MONTHS, waLink } from '../../lib/format';
+import { taka, monthBn, EN_MONTHS, waLink, fmtDate, todayISO } from '../../lib/format';
 import {
   PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, FeeStartSelect, cx, CONTAINER, GUTTER,
-  CARD_GRID, DOCK, DOCK_BOTTOM,
+  CARD_GRID,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
 import { assignOps, deleteClassDeep, renameClassCode, reissueTeacherLogin, deleteTeacher, CLASS_PRESETS, SECTION_PRESETS, suggestClassCode } from './principalData';
@@ -27,7 +27,7 @@ const TABS = [
   { id: 'home', label: 'ওভারভিউ', icon: House },
   { id: 'classes', label: 'ক্লাস', icon: School },
   { id: 'teachers', label: 'শিক্ষক', icon: Users },
-  { id: 'settings', label: 'সেটিংস', icon: Settings },
+  { id: 'settings', label: 'প্রোফাইল', icon: Settings },
 ];
 
 export function PrincipalApp({ onOpenClass, onOpenPortal, onSignOut }) {
@@ -190,14 +190,17 @@ function Overview({
 
   return (
     <div className="pt-safe">
-      <div className="flex items-center gap-3 pb-4 pt-5 md:pt-7">
-        <Avatar name={profile?.name} seed={profile?.uid} size={46} rounded="rounded-full" />
+      <button type="button" onClick={() => go('settings')} className="press flex w-full items-center gap-3 pb-4 pt-5 text-left md:pt-7" aria-label="প্রোফাইল ও সেটিংস">
+        <Avatar name={profile?.name} seed={profile?.uid} size={48} rounded="rounded-full" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] text-slate-500">{institution?.name || 'প্রতিষ্ঠান'}</p>
-          <p className="truncate text-[17px] font-extrabold text-ink">{profile?.name}</p>
+          <p className="truncate text-[12.5px] text-slate-500">
+            {greeting()} · {fmtDate(todayISO(), { year: false })}
+          </p>
+          <p className="truncate text-[18px] font-extrabold leading-tight text-ink">{profile?.name}</p>
+          <p className="truncate text-[12.5px] text-slate-500">{institution?.name || 'প্রতিষ্ঠান'} · অধ্যক্ষ</p>
         </div>
-        <Badge tone="brand">অধ্যক্ষ</Badge>
-      </div>
+        <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+      </button>
 
       <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-5 text-white shadow-lift">
         <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-white/10" />
@@ -253,32 +256,41 @@ function Overview({
         </button>
       </div>
 
-      {(noIncharge.length > 0 || noAttendance.length > 0) && (
-        <div className="mt-3.5 space-y-2.5">
-          {noIncharge.length > 0 && (
-            <Alert
-              tone="amber"
-              icon={TriangleAlert}
-              title={`${noIncharge.length}টি ক্লাসে ইনচার্জ নেই`}
-              text={noIncharge.map((c) => c.name).join(', ')}
-              action="দায়িত্ব দিন"
-              onAction={() => onFilterClasses('noIncharge')}
-            />
-          )}
-          {noAttendance.length > 0 && (
-            <Alert
-              tone="red"
-              icon={CalendarX}
-              title={`আজ ${noAttendance.length}টি ক্লাসে হাজিরা নেওয়া হয়নি`}
-              text={noAttendance.map((c) => c.name).join(', ')}
-              action="রিমাইন্ডার দিন"
-              onAction={onOpenAttendanceReminder}
-            />
-          )}
-        </div>
-      )}
+      {/* Today's to-do: everything that needs the principal, in one place */}
+      {(() => {
+        const overdueN = sum('overdue');
+        const rows = [
+          noAttendance.length > 0 && { icon: CalendarX, tone: 'bg-rose-50 text-rose-600', title: `আজ ${noAttendance.length}টি ক্লাসে হাজিরা বাকি`, sub: noAttendance.map((c) => c.name).join(', '), act: 'রিমাইন্ডার', onClick: onOpenAttendanceReminder },
+          noIncharge.length > 0 && { icon: TriangleAlert, tone: 'bg-amber-50 text-amber-600', title: `${noIncharge.length}টি ক্লাসে ইনচার্জ নেই`, sub: noIncharge.map((c) => c.name).join(', '), act: 'দায়িত্ব দিন', onClick: () => onFilterClasses('noIncharge') },
+          overdueN > 0 && { icon: Wallet, tone: 'bg-rose-50 text-rose-600', title: `${overdueN} জনের বেতন মেয়াদোত্তীর্ণ`, sub: 'বকেয়া আছে এমন ক্লাসগুলো দেখুন', act: 'দেখুন', onClick: () => onFilterClasses('overdue') },
+        ].filter(Boolean);
+        if (classes.length === 0) return null;
+        return rows.length === 0 ? (
+          <div className="mt-3.5 flex items-center gap-3 rounded-2xl bg-emerald-50 px-4 py-3 text-[14px] font-semibold text-emerald-700">
+            <Check className="h-5 w-5" /> আজ সব ঠিক আছে — কোনো করণীয় নেই
+          </div>
+        ) : (
+          <div className="mt-3.5">
+            <p className="mb-2 px-1 text-[15px] font-bold text-ink">আজকের করণীয়</p>
+            <Card className="divide-y divide-slate-100 overflow-hidden">
+              {rows.map((r) => (
+                <button key={r.title} type="button" onClick={r.onClick} className="press flex w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50">
+                  <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', r.tone)}>
+                    <r.icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14.5px] font-bold leading-snug text-ink">{r.title}</span>
+                    <span className="block truncate text-[12.5px] text-slate-500">{r.sub}</span>
+                  </span>
+                  <span className="shrink-0 text-[13px] font-semibold text-brand-600">{r.act}</span>
+                </button>
+              ))}
+            </Card>
+          </div>
+        );
+      })()}
 
-      <div className="mb-2.5 mt-6 flex items-end justify-between px-1">
+      <div className="mb-2 mt-5 flex items-end justify-between px-1">
         <h3 className="text-[15px] font-bold text-ink">ক্লাসসমূহ</h3>
         <button type="button" onClick={() => go('classes')} className="flex items-center gap-0.5 text-[13.5px] font-semibold text-brand-600">
           সব দেখুন <ChevronRight className="h-4 w-4" />
@@ -287,32 +299,50 @@ function Overview({
       {classes.length === 0 ? (
         <EmptyState icon={School} title="এখনো কোনো ক্লাস নেই" text="প্রথমে একটি ক্লাস তৈরি করুন, তারপর শিক্ষককে দায়িত্ব দিন" action={<Button icon={Plus} onClick={onNewClass}>ক্লাস তৈরি করুন</Button>} />
       ) : (
-        <div className={CARD_GRID}>
+        <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">
           {classes.map((c) => (
-            <ClassCard key={c.id} c={c} teacher={teachers.find((t) => t.id === c.inchargeUid)} onOpen={() => onOpenClass(c.id)} />
+            <ClassRow key={c.id} c={c} teacher={teachers.find((t) => t.id === c.inchargeUid)} onOpen={() => onOpenClass(c.id)} />
           ))}
-        </div>
+        </Card>
       )}
     </div>
   );
 }
 
-const Alert = ({ tone, icon: Icon, title, text, action, onAction }) => (
-  <div className={cx('flex flex-wrap items-center gap-3 rounded-3xl p-4 ring-1', tone === 'red' ? 'bg-rose-50 ring-rose-100' : 'bg-amber-50 ring-amber-100')}>
-    <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-white', tone === 'red' ? 'bg-rose-500' : 'bg-amber-500')}>
-      <Icon className="h-5 w-5" />
-    </span>
-    <div className="min-w-0 flex-1">
-      <p className="text-[14.5px] font-bold leading-snug text-ink">{title}</p>
-      <p className="truncate text-[12.5px] text-slate-600">{text}</p>
-    </div>
-    {action && (
-      <Button size="sm" variant="secondary" onClick={onAction}>
-        {action}
-      </Button>
-    )}
-  </div>
-);
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'সুপ্রভাত' : h < 17 ? 'শুভ অপরাহ্ন' : 'শুভ সন্ধ্যা';
+};
+
+// Compact class line for the overview: name, incharge, today's attendance, collection
+function ClassRow({ c, teacher, onOpen }) {
+  const st = c.stats;
+  const who = teacher?.name || c.inchargeName;
+  return (
+    <button type="button" onClick={onOpen} className="press flex w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50 md:border-b md:border-slate-100 md:odd:border-r">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+        <School className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-bold text-ink">{c.name}{c.section ? ` · ${c.section}` : ''}</span>
+        <span className={cx('block truncate text-[12.5px]', who ? 'text-slate-500' : 'font-semibold text-amber-600')}>{who || 'ইনচার্জ নেই'}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        {st ? (
+          <>
+            <span className={cx('tabular block text-[13px] font-bold', st.attendanceTaken ? 'text-emerald-600' : 'text-rose-500')}>
+              {st.attendanceTaken ? `✓ ${st.present}/${st.students}` : 'হাজিরা বাকি'}
+            </span>
+            <span className="tabular block text-[12px] text-slate-500">আদায় {taka(st.collected || 0)}</span>
+          </>
+        ) : (
+          <span className="text-[12px] text-slate-400">হিসাব আসেনি</span>
+        )}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+    </button>
+  );
+}
 
 function AttendanceReminderSheet({ classes, teachers, institution, onClose, onEditClass }) {
   const noAttendance = (classes || []).filter((c) => c.stats && !c.stats.attendanceTaken);
@@ -1431,10 +1461,39 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
     toast('সংরক্ষিত হয়েছে');
   };
 
+  const [adv, setAdv] = useState(false);
+
   return (
     <div>
-      <PageHeader title="সেটিংস" subtitle="প্রতিষ্ঠান ও আপনার প্রোফাইল" />
+      <PageHeader
+        title="প্রোফাইল ও সেটিংস"
+        subtitle="আপনার তথ্য ও প্রতিষ্ঠান"
+        actions={
+          dirty && (
+            <Button size="sm" variant="success" onClick={save} className="font-bold">
+              সংরক্ষণ
+            </Button>
+          )
+        }
+      />
       <div className="space-y-3 md:grid md:grid-cols-2 md:items-start md:gap-3 md:space-y-0">
+        <Card className="space-y-4 p-4">
+          <div className="flex items-center gap-3">
+            <Avatar name={me.name || profile?.name} seed={profile?.uid} size={56} rounded="rounded-full" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[17px] font-extrabold text-ink">{me.name || profile?.name}</p>
+              <p className="truncate text-[12.5px] text-slate-500">{profile?.email}</p>
+            </div>
+            <Badge tone="brand">অধ্যক্ষ</Badge>
+          </div>
+          <Field label="নাম">
+            <Input value={me.name} onChange={(e) => setMe((x) => ({ ...x, name: e.target.value }))} />
+          </Field>
+          <Field label="মোবাইল">
+            <Input type="tel" inputMode="tel" value={me.phone} onChange={(e) => setMe((x) => ({ ...x, phone: e.target.value }))} />
+          </Field>
+        </Card>
+
         <Card className="space-y-4 p-4">
           <p className="flex items-center gap-2 text-[15.5px] font-bold text-ink">
             <Building2 className="h-5 w-5 text-brand-600" /> প্রতিষ্ঠান
@@ -1446,54 +1505,16 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
             <Input value={inst.address} onChange={(e) => setInst((x) => ({ ...x, address: e.target.value }))} />
           </Field>
         </Card>
-        <Card className="space-y-4 p-4">
-          <p className="flex items-center gap-2 text-[15.5px] font-bold text-ink">
-            <UserRound className="h-5 w-5 text-brand-600" /> আমার প্রোফাইল
-          </p>
-          <Field label="নাম">
-            <Input value={me.name} onChange={(e) => setMe((x) => ({ ...x, name: e.target.value }))} />
-          </Field>
-          <Field label="মোবাইল">
-            <Input type="tel" inputMode="tel" value={me.phone} onChange={(e) => setMe((x) => ({ ...x, phone: e.target.value }))} />
-          </Field>
-          <p className="text-[12.5px] text-slate-500">লগইন ইমেইল: {profile?.email}</p>
-        </Card>
-        <Card className="space-y-3 p-4">
-          <p className="flex items-center gap-2 text-[15.5px] font-bold text-ink">
-            <IdCard className="h-5 w-5 text-brand-600" /> শিক্ষকের লগইন আইডি
-          </p>
-          <Field label="আইডির শুরু" hint={`পরের শিক্ষকের আইডি হবে ${prefixOk ? formatStaffId(prefixValue, prefixValue === savedPrefix ? Number(counter?.last || 0) + 1 : 1) : '—'} — নম্বর আপনাআপনি বাড়ে`}>
-            <Input
-              value={prefixValue}
-              maxLength={4}
-              onChange={(e) => setPrefix(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
-              className="tabular tracking-widest"
-            />
-          </Field>
-        </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <span className={cx('grid h-11 w-11 place-items-center rounded-2xl', isLocal ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600')}>
-              <Database className="h-5 w-5" />
-            </span>
-            <div className="flex-1">
-              <p className="text-[15px] font-bold text-ink">{isLocal ? 'পরীক্ষামূলক ডাটাবেজ' : 'Cloud (Firebase) সংযুক্ত'}</p>
-              <p className="text-[12.5px] text-slate-500">
-                {isLocal ? 'শুধু পরীক্ষার জন্য — তথ্য এই ব্রাউজারেই থাকে। আসল ব্যবহারের জন্য Firebase কী বসান।' : 'সব শিক্ষকের ফোনে একই তথ্য, ইন্টারনেট ছাড়াও কাজ করে।'}
-              </p>
-              <p className="tabular mt-1 text-[11.5px] text-slate-400">অ্যাপ ভার্সন {__APP_VERSION__}</p>
-            </div>
-          </div>
-        </Card>
+
         <Card className="divide-y divide-slate-100 overflow-hidden">
-          <button type="button" onClick={onOpenPortal} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
-            <UserRound className="h-5 w-5 text-slate-500" />
-            <span className="flex-1 text-[15px] font-semibold text-ink">শিক্ষার্থী পোর্টাল দেখুন</span>
-            <ArrowRight className="h-5 w-5 text-slate-300" />
-          </button>
           <button type="button" onClick={() => setAccount('password')} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
             <KeyRound className="h-5 w-5 text-slate-500" />
             <span className="flex-1 text-[15px] font-semibold text-ink">পাসওয়ার্ড বদলান</span>
+            <ArrowRight className="h-5 w-5 text-slate-300" />
+          </button>
+          <button type="button" onClick={onOpenPortal} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50">
+            <UserRound className="h-5 w-5 text-slate-500" />
+            <span className="flex-1 text-[15px] font-semibold text-ink">শিক্ষার্থী পোর্টাল দেখুন</span>
             <ArrowRight className="h-5 w-5 text-slate-300" />
           </button>
           <button type="button" onClick={onSignOut} className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-rose-50">
@@ -1501,22 +1522,37 @@ function PrincipalSettings({ institution, profile, onOpenPortal, onSignOut }) {
             <span className="flex-1 text-[15px] font-semibold text-rose-600">লগআউট</span>
           </button>
         </Card>
+
+        <Card className="overflow-hidden">
+          <button type="button" onClick={() => setAdv((v) => !v)} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <IdCard className="h-5 w-5 text-slate-500" />
+            <span className="flex-1 text-[15px] font-semibold text-ink">উন্নত সেটিংস</span>
+            <ChevronRight className={cx('h-5 w-5 text-slate-300 transition', adv && 'rotate-90')} />
+          </button>
+          {adv && (
+            <div className="space-y-4 px-4 pb-4">
+              <Field label="শিক্ষকের লগইন আইডির শুরু" hint={`পরের শিক্ষকের আইডি হবে ${prefixOk ? formatStaffId(prefixValue, prefixValue === savedPrefix ? Number(counter?.last || 0) + 1 : 1) : '—'} — নম্বর আপনাআপনি বাড়ে`}>
+                <Input
+                  value={prefixValue}
+                  maxLength={4}
+                  onChange={(e) => setPrefix(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                  className="tabular tracking-widest"
+                />
+              </Field>
+              <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
+                <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-xl', isLocal ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600')}>
+                  <Database className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-bold text-ink">{isLocal ? 'পরীক্ষামূলক ডাটাবেজ' : 'Cloud (Firebase) সংযুক্ত'}</p>
+                  <p className="tabular text-[11.5px] text-slate-400">অ্যাপ ভার্সন {__APP_VERSION__}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
       </div>
       <AccountSheet kind={account} onClose={() => setAccount(null)} />
-
-      {dirty && (
-        <>
-          <div className="h-20" />
-          <div className={DOCK} style={DOCK_BOTTOM}>
-            <div className="flex items-center gap-3 rounded-[22px] bg-ink/95 p-2 pl-4 text-white shadow-2xl backdrop-blur">
-              <p className="flex-1 text-[14px] font-semibold">অসংরক্ষিত পরিবর্তন</p>
-              <Button variant="success" size="sm" onClick={save}>
-                সংরক্ষণ
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }
