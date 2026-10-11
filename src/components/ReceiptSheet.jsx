@@ -1,9 +1,9 @@
-import React from 'react';
-import { Printer, Check } from 'lucide-react';
+import React, { useState } from 'react';
+import { Printer, Check, Copy, Pencil, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, Button, Logo } from './ui';
-import { taka, fmtDate, fmtTime, studentTags, waLink, methodBn } from '../lib/format';
+import { taka, fmtDate, fmtTime, studentTags, waLink, methodBn, formatItemDescBn } from '../lib/format';
 
 const WhatsAppIcon = (props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -13,16 +13,79 @@ const WhatsAppIcon = (props) => (
 export { WhatsAppIcon };
 
 export function ReceiptSheet() {
-  const { receipt, closeReceipt } = useUI();
-  const { settings, students, calculateStudentTotalDue, userRole } = useApp();
-  const p = receipt?.payment;
+  const { receipt, closeReceipt, openEditPayment, confirm, toast } = useUI();
+  const { settings, students, payments, calculateStudentTotalDue, deletePayment, userRole } = useApp();
+  const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const rawP = receipt?.payment;
+  const p = rawP ? payments.find((x) => x.id === rawP.id) || rawP : null;
   const student = p ? students.find((s) => s.id === p.studentId || s.roll === Number(p.roll)) : null;
   const remaining = student ? calculateStudentTotalDue(student.id) : 0;
 
   const portalUrl = typeof window !== 'undefined' && p?.roll ? `${window.location.origin}?roll=${p.roll}` : '';
+
+  const rawItems = p?.items?.length ? p.items : [{ description: 'ফি পরিশোধ', amount: p?.amount || 0 }];
+  const itemsText = rawItems
+    .map((it) => `• ${formatItemDescBn(it.description)}: ${taka(it.amount)}`)
+    .join('\n');
+
+  const methodText = methodBn(p?.method || 'Cash');
+  const trxPart = p?.trxId ? ` (TrxID: ${p.trxId})` : '';
+
+  const inchargeDetails = [
+    settings.inchargeDesignation || 'ক্লাস ইনচার্জ',
+    settings.className,
+  ].filter(Boolean).join(', ');
+
   const shareText = p
-    ? `প্রিয় অভিভাবক,\n${p.studentName} (রোল ${p.roll})-এর ${taka(p.amount)} পরিশোধ সফলভাবে গৃহীত হয়েছে।\nরশিদ নং: ${p.receiptNo}\nতারিখ: ${fmtDate(p.paymentDate)}\nঅবশিষ্ট বকেয়া: ${taka(remaining)}${portalUrl ? `\n\n🌐 শিক্ষার্থী পোর্টাল:\n${portalUrl}` : ''}\n\nধন্যবাদ,\n${settings.inchargeName}`
+    ? [
+        `*প্রিয় অভিভাবক,*`,
+        `আসসালামু আলাইকুম।`,
+        `*${p.studentName}* (রোল: *${p.roll}*)-এর ফি পরিশোধ সফলভাবে গৃহীত হয়েছে।`,
+        ``,
+        `🧾 *রশিদ নং:* ${p.receiptNo}`,
+        `📅 *তারিখ:* ${fmtDate(p.paymentDate)} · ${fmtTime(p.paymentDate)}`,
+        `💳 *মাধ্যম:* ${methodText}${trxPart}`,
+        ``,
+        `📋 *আদায়কৃত ফি বিবরণ:*`,
+        itemsText,
+        `━━━━━━━━━━━━━━━━`,
+        `*মোট আদায়:* *${taka(p.amount)}*`,
+        `*অবশিষ্ট মোট বকেয়া:* ${remaining > 0 ? taka(remaining) : '৳০ (পরিশোধিত)'}`,
+        portalUrl ? `\n🌐 *শিক্ষার্থী পোর্টাল (বিস্তারিত ও রশিদ):*\n${portalUrl}` : '',
+        ``,
+        `ধন্যবাদ,`,
+        `*${settings.inchargeName}*`,
+        inchargeDetails,
+        settings.institutionName || '',
+      ]
+        .filter(Boolean)
+        .join('\n')
     : '';
+
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {}
+  };
+
+  const handleDelete = async () => {
+    if (!p) return;
+    const ok = await confirm({
+      title: 'পেমেন্ট ও রশিদ মুছবেন?',
+      message: `${p.studentName} (রোল ${p.roll}) — ${taka(p.amount)} (${p.receiptNo})। এই রশিদের টাকা শিক্ষার্থীর বকেয়া হিসেবে পুনরায় যুক্ত হবে এবং ডাটাবেজ থেকে রশিদটি স্থায়ীভাবে মুছে যাবে।`,
+      confirmText: 'হ্যাঁ, মুছুন',
+      tone: 'danger',
+      icon: Trash2,
+    });
+    if (!ok) return;
+    await deletePayment(p.id);
+    toast('পেমেন্ট ও রশিদ মুছে ফেলা হয়েছে এবং বকেয়া ডাটাবেজে সমন্বয় করা হয়েছে');
+    closeReceipt();
+  };
 
   return (
     <Sheet
@@ -33,48 +96,58 @@ export function ReceiptSheet() {
       subtitle={p?.receiptNo}
       footer={
         p && (
-          <div className="grid grid-cols-2 gap-2.5">
-            <Button variant="secondary" icon={Printer} onClick={() => window.print()}>
-              প্রিন্ট / PDF
-            </Button>
+          <div className="flex gap-2">
             {student?.guardianPhone && userRole === 'admin' ? (
-              <Button as="a" href={waLink(student.guardianPhone, shareText)} target="_blank" rel="noopener noreferrer" variant="success">
-                <WhatsAppIcon className="h-5 w-5" />
-                অভিভাবককে
+              <Button as="a" href={waLink(student.guardianPhone, shareText)} target="_blank" rel="noopener noreferrer" variant="success" size="sm" className="min-w-0 flex-1">
+                <WhatsAppIcon className="h-4 w-4" />
+                অভিভাবককে পাঠান
               </Button>
             ) : (
-              <Button onClick={closeReceipt}>বন্ধ করুন</Button>
+              <Button onClick={closeReceipt} size="sm" className="min-w-0 flex-1">বন্ধ করুন</Button>
             )}
+            <Button variant="secondary" size="sm" icon={Printer} onClick={() => window.print()} className="px-3.5" aria-label="প্রিন্ট / PDF" title="প্রিন্ট / PDF" />
+            <Button variant="secondary" size="sm" icon={copied ? Check : Copy} onClick={copyMessage} className="px-3.5" aria-label="মেসেজ কপি করুন" title="মেসেজ কপি করুন" />
           </div>
         )
       }
     >
       {p && (
         <div className="pt-1">
+          {userRole === 'admin' && (
+            <div className="no-print mb-3 grid grid-cols-2 gap-2">
+              <Button variant="secondary" size="sm" icon={Pencil} onClick={() => openEditPayment(p)}>
+                সম্পাদনা
+              </Button>
+              <Button variant="soft-danger" size="sm" icon={Trash2} onClick={handleDelete}>
+                মুছুন
+              </Button>
+            </div>
+          )}
+
           {receipt.fresh && (
-            <div className="no-print mb-5 flex flex-col items-center pt-2 text-center">
-              <div className="grid h-16 w-16 animate-pop place-items-center rounded-full bg-emerald-500 text-white shadow-[0_12px_30px_-10px_rgba(16,185,129,.8)]">
-                <Check className="h-8 w-8" strokeWidth={3} />
+            <div className="no-print mb-3 flex flex-col items-center text-center">
+              <div className="grid h-11 w-11 animate-pop place-items-center rounded-full bg-emerald-500 text-white shadow-[0_10px_24px_-10px_rgba(16,185,129,.8)]">
+                <Check className="h-6 w-6" strokeWidth={3} />
               </div>
-              <p className="mt-3 text-[20px] font-extrabold text-ink">পেমেন্ট সফল</p>
-              <p className="text-[14px] text-slate-500">{taka(p.amount)} গ্রহণ করা হয়েছে</p>
+              <p className="mt-2 text-[16px] font-extrabold text-ink">পেমেন্ট সফল</p>
+              <p className="text-[13px] text-slate-500">{taka(p.amount)} গ্রহণ করা হয়েছে</p>
             </div>
           )}
 
           <div className="relative overflow-hidden rounded-3xl bg-white ring-1 ring-slate-200">
-            <div className="bg-gradient-to-br from-brand-600 to-brand-800 px-5 pb-5 pt-5 text-center text-white">
-              <div className="mx-auto mb-2 grid h-14 w-14 place-items-center rounded-2xl bg-white p-1">
-                <Logo size={48} />
+            <div className="bg-gradient-to-br from-brand-600 to-brand-800 px-4 pb-3.5 pt-4 text-center text-white">
+              <div className="mx-auto mb-1.5 grid h-11 w-11 place-items-center rounded-xl bg-white p-1">
+                <Logo size={36} />
               </div>
-              <p className="text-[15px] font-bold leading-snug">{settings.institutionName}</p>
+              <p className="text-[14px] font-bold leading-snug">{settings.institutionName}</p>
               <p className="text-[12px] text-white/70">{settings.sectionName}</p>
-              <p className="mt-3 inline-block rounded-full bg-white/15 px-3 py-1 text-[12px] font-bold tracking-wider">
+              <p className="mt-2 inline-block rounded-full bg-white/15 px-3 py-0.5 text-[11px] font-bold tracking-wider">
                 MONEY RECEIPT · অর্থ প্রাপ্তি রশিদ
               </p>
             </div>
 
-            <div className="px-5 py-4">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
+            <div className="px-4 py-3.5">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
                 <Meta label="রশিদ নং" value={p.receiptNo} mono />
                 <Meta label="তারিখ" value={`${fmtDate(p.paymentDate)} · ${fmtTime(p.paymentDate)}`} right />
                 <Meta label="শিক্ষার্থী" value={p.studentName} />
@@ -83,12 +156,12 @@ export function ReceiptSheet() {
                 <Meta label="আইডি" value={student?.studentId || '—'} right mono />
               </div>
 
-              <div className="my-4 border-t-2 border-dashed border-slate-200" />
+              <div className="my-3 border-t-2 border-dashed border-slate-200" />
 
               <div className="space-y-2.5">
-                {(p.items?.length ? p.items : [{ description: 'Class Fee', amount: p.amount }]).map((it, i) => (
+                {(p.items?.length ? p.items : [{ description: 'ফি পরিশোধ', amount: p.amount }]).map((it, i) => (
                   <div key={i} className="flex items-start justify-between gap-4 text-[14px]">
-                    <span className="text-slate-600">{it.description}</span>
+                    <span className="text-slate-600">{formatItemDescBn(it.description)}</span>
                     <span className="tabular font-semibold text-ink">{taka(it.amount)}</span>
                   </div>
                 ))}
@@ -115,6 +188,28 @@ export function ReceiptSheet() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* WhatsApp message preview toggle */}
+          <div className="no-print mt-3">
+            <button
+              type="button"
+              onClick={() => setShowPreview((v) => !v)}
+              className="flex w-full items-center justify-between rounded-2xl bg-emerald-50 px-4 py-2.5 text-[13px] font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
+              <span className="inline-flex items-center gap-2">
+                <WhatsAppIcon className="h-4 w-4 text-emerald-600" />
+                WhatsApp মেসেজ প্রিভিউ {showPreview ? 'লুকান' : 'দেখুন'}
+              </span>
+              <span className="text-[12px] text-emerald-600">{showPreview ? '▲' : '▼'}</span>
+            </button>
+            {showPreview && (
+              <div className="mt-2 rounded-2xl bg-[#efeae2] p-3 text-[13.5px]">
+                <div className="whitespace-pre-wrap rounded-xl rounded-tr-sm bg-[#d9fdd3] p-3 leading-relaxed text-[#111b21] shadow-sm">
+                  {shareText}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

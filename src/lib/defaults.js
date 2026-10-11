@@ -1,9 +1,10 @@
 // Starting rules for a newly created class. Each in-charge changes these in Settings.
 export const DEFAULT_WHATSAPP_TEMPLATE = [
   'প্রিয় অভিভাবক,',
-  'আপনার সন্তান {student_name}-এর {month} মাসের বেতন ৳{monthly_fee} এবং সর্বমোট বকেয়া ৳{total_due}।',
-  'বকেয়া পরিশোধের শেষ সময়: {deadline}।',
-  'অনুগ্রহ করে নির্ধারিত সময়ের মধ্যে কলেজ অফিসে অথবা বিকাশ/নগদে ফি পরিশোধ করার জন্য অনুরোধ করা হলো।',
+  'আপনার সন্তান {student_name}-এর নিচের ফি বাকি আছে:',
+  '{fee_breakdown}',
+  'ফি পরিশোধের শেষ সময়: {deadline}।',
+  'অনুগ্রহ করে নির্ধারিত সময়ের মধ্যে কলেজ অফিসে এসে ফি পরিশোধ করার জন্য অনুরোধ করা হলো।',
   '',
   '🌐 শিক্ষার্থী পোর্টাল: {portal_link}',
   '',

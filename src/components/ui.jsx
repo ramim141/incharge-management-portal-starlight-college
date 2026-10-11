@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ChevronLeft, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { X, Search, ChevronLeft, SlidersHorizontal, ChevronDown, Check } from 'lucide-react';
 import { useBackHandler } from '../lib/backstack';
 import logoUrl from '../assets/images/logo.png';
 import { ACADEMIC_MONTHS, EN_MONTHS, BN_MONTHS } from '../lib/format';
@@ -20,7 +20,7 @@ export const BLEED = '-mx-4 px-4 sm:-mx-6 sm:px-6';
 export const DOCK = 'no-print fixed inset-x-0 z-30 mx-auto max-w-[480px] px-4 sm:max-w-[560px]';
 export const DOCK_BOTTOM = { bottom: 'calc(80px + env(safe-area-inset-bottom) + var(--nav-lift, 0px))' };
 // Card lists: one column on phones, two on tablets
-export const CARD_GRID = 'space-y-2.5 md:grid md:grid-cols-2 md:gap-3 md:space-y-0';
+export const CARD_GRID = 'stagger space-y-2.5 md:grid md:grid-cols-2 md:gap-3 md:space-y-0';
 
 export const TONES = {
   green: 'bg-emerald-50 text-emerald-700 ring-emerald-600/15',
@@ -465,6 +465,60 @@ export function SelectPill({ value, onChange, options, className, label }) {
   );
 }
 
+const CheckBox = ({ on }) => (
+  <span className={cx('flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2', on ? 'border-brand-600 bg-brand-600 text-white' : 'border-slate-300 bg-white')}>
+    {on && <Check className="h-3.5 w-3.5" strokeWidth={3.5} />}
+  </span>
+);
+
+/** Dropdown with a checkbox per option. With `allLabel`, an empty selection means "everything". */
+export function MultiSelectPill({ value, onChange, options, label, allLabel, className }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+
+  const toggle = (v) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  const chosen = options.filter((o) => value.includes(o.value));
+  const text = chosen.length === 0 ? allLabel : chosen.length === 1 ? chosen[0].label : chosen.length === options.length && allLabel ? allLabel : `${chosen.length}টি মাস`;
+  return (
+    <div ref={ref} className={cx('relative inline-block', className)}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="press relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white pl-4 pr-9 text-[14px] font-semibold text-ink shadow-card">
+        {label && <span className="text-slate-500">{label}</span>}
+        <span className="max-w-[9rem] truncate">{text}</span>
+        <ChevronDown className={cx('pointer-events-none absolute right-3 h-4 w-4 text-slate-400 transition', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-12 z-40 w-64 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl bg-white shadow-lift ring-1 ring-slate-100">
+          <div className="max-h-72 overflow-y-auto py-1">
+            {allLabel && (
+              <button type="button" onClick={() => onChange([])} className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3 text-left text-[14px] font-bold text-ink">
+                <CheckBox on={value.length === 0} />
+                {allLabel}
+              </button>
+            )}
+            {options.map((o) => (
+              <button key={o.value} type="button" onClick={() => toggle(o.value)} className="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] font-semibold text-ink">
+                <CheckBox on={value.includes(o.value)} />
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => setOpen(false)} className="w-full border-t border-slate-100 bg-slate-50 py-2.5 text-[13.5px] font-bold text-brand-600">
+            ঠিক আছে
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Segmented({ options, value, onChange, className }) {
   return (
     <div className={cx('grid gap-1 rounded-2xl bg-slate-200/60 p-1', className)} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
@@ -555,12 +609,12 @@ export function PageHeader({ title, subtitle, actions, onBack, children }) {
 let zSeed = 0;
 let openSheets = 0;
 
-function SheetInner({ onClose, title, subtitle, children, footer, full, headerRight, tone, printable }) {
+function SheetInner({ onClose, title, subtitle, children, footer, full, headerRight, tone, printable, closing }) {
   const [z] = useState(() => 60 + ++zSeed);
   const [dragY, setDragY] = useState(0);
   const startY = useRef(null);
 
-  useBackHandler(true, onClose);
+  useBackHandler(!closing, onClose);
 
   useEffect(() => {
     openSheets += 1;
@@ -585,11 +639,12 @@ function SheetInner({ onClose, title, subtitle, children, footer, full, headerRi
   };
 
   return (
-    <div className="fixed inset-0 flex items-end justify-center md:items-center md:p-6" style={{ zIndex: z }} role="dialog" aria-modal="true">
-      <div className="no-print absolute inset-0 animate-fade bg-slate-950/45 backdrop-blur-[2px]" onClick={onClose} />
+    <div className={cx('fixed inset-0 flex items-end justify-center md:items-center md:p-6', closing && 'pointer-events-none')} style={{ zIndex: z }} role="dialog" aria-modal="true">
+      <div className={cx('no-print absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]', closing ? 'animate-fade-out' : 'animate-fade')} onClick={onClose} />
       <div
         className={cx(
-          'relative flex w-full max-w-[480px] animate-sheet flex-col rounded-t-[28px] bg-white shadow-2xl sm:max-w-[560px] md:rounded-[28px]',
+          'relative flex w-full max-w-[480px] flex-col rounded-t-[28px] bg-white shadow-2xl will-change-transform sm:max-w-[560px] md:rounded-[28px]',
+          closing ? 'animate-sheet-out' : 'animate-sheet',
           full ? 'h-[94dvh] md:h-[min(88dvh,860px)]' : 'max-h-[92dvh] md:max-h-[88dvh]',
           printable && 'print-area',
         )}
@@ -635,8 +690,27 @@ function SheetInner({ onClose, title, subtitle, children, footer, full, headerRi
 
 /** Bottom sheet — the app's only modal pattern. Swipe down, tap outside or press Back to close. */
 export function Sheet({ open, ...props }) {
-  if (!open) return null;
-  return createPortal(<SheetInner {...props} />, document.body);
+  // Stays mounted for the slide-out, showing what it showed when it was last open
+  const [present, setPresent] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const last = useRef(props);
+  if (open) last.current = props;
+  if (open && (!present || closing)) {
+    setPresent(true);
+    setClosing(false);
+  }
+  if (!open && present && !closing) setClosing(true);
+  useEffect(() => {
+    if (!closing) return undefined;
+    const t = setTimeout(() => {
+      setPresent(false);
+      setClosing(false);
+    }, 220);
+    return () => clearTimeout(t);
+  }, [closing]);
+
+  if (!open && !present) return null;
+  return createPortal(<SheetInner {...(open ? props : last.current)} closing={!open} />, document.body);
 }
 
 export function InfoRow({ icon: Icon, label, value, mono }) {

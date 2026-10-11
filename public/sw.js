@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and lets it open without internet.
 // Firebase traffic is never touched — Firestore has its own offline cache.
-const CACHE = 'class-portal-v3';
+const CACHE = 'class-portal-v4';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/manifest.webmanifest', '/icons/icon-192.png'])));
@@ -53,4 +53,20 @@ self.addEventListener('fetch', (event) => {
       ),
     );
   }
+});
+
+// Tapping a notification brings the app forward (and, if it is open, tells it which screen to show)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const tab = event.notification.data?.tab || '';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const open = list.find((c) => 'focus' in c);
+      if (open) {
+        open.postMessage({ type: 'notification-click', tab });
+        return open.focus();
+      }
+      return self.clients.openWindow('/');
+    }),
+  );
 });

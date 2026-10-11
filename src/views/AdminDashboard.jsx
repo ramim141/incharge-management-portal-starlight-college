@@ -5,20 +5,22 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { Card, IconButton, Avatar, RollBadge, Badge, Button, Progress, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
+import { Card, IconButton, Avatar, RollBadge, Badge, Button, SectionTitle, Sheet, SearchBar, EmptyState, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { AbsenteeSheet } from '../components/AbsenteeSheet';
-import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, toEnDigits, waLink } from '../lib/format';
+import { MonthHistory } from '../components/MonthHistory';
+import { MonthHero } from '../components/MonthHero';
+import { TodoCard } from '../components/TodoCard';
+import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, waLink } from '../lib/format';
 
 export const AdminDashboard = () => {
   const {
-    students, totalStudentsCount, activeStudentsCount, thisMonthCollection, thisMonthDue, totalDueAcrossAll,
-    paidCount, attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, missingFeeCount, generateMonthFees, profile,
+    students, totalStudentsCount, activeStudentsCount, totalDueAcrossAll,
+    attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, profile,
   } = useApp();
-  const { openWhatsApp, openReceipt, openStudentForm, openPayment, toast } = useUI();
+  const { openWhatsApp, openReceipt, openStudentForm, openDayClose } = useUI();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [todayPaymentsOpen, setTodayPaymentsOpen] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
 
   const today = todayISO();
@@ -58,8 +60,6 @@ export const AdminDashboard = () => {
     return st.totalClasses > 0 && st.percentage < 75;
   });
 
-  const expected = thisMonthCollection + thisMonthDue;
-  const pct = expected > 0 ? Math.round((thisMonthCollection / expected) * 100) : 0;
 
   const tomorrow = shiftISODate(today, 1);
   const examTomorrow = [...new Set(examFees.filter((e) => e.status === 'Due' && e.deadline === tomorrow).map((e) => e.examName))];
@@ -79,7 +79,7 @@ export const AdminDashboard = () => {
     },
     lowAttendance.length > 0 && {
       id: 'low', tone: 'amber', icon: ShieldAlert,
-      title: `${lowAttendance.length} জনের হাজিরা ৭৫% এর কম`,
+      title: `${lowAttendance.length} জনের হাজিরা 75% এর কম`,
       text: 'অভিভাবককে জানানো প্রয়োজন',
       action: () => setActiveTab('reports'), actionLabel: 'দেখুন',
     },
@@ -93,15 +93,19 @@ export const AdminDashboard = () => {
   return (
     <div className="pt-safe">
       {/* Greeting */}
-      <div className="flex items-center gap-3 pb-4 pt-5 md:pt-7">
-        <Avatar name={profile?.name || settings.inchargeName} seed={profile?.uid || "incharge"} size={46} rounded="rounded-full" />
+      <div className="flex items-center gap-3.5 pb-4 pt-5 md:pt-7">
+        <span className="shrink-0 rounded-full p-[3px] ring-2 ring-brand-200 ring-offset-2 ring-offset-canvas">
+          <Avatar name={profile?.name || settings.inchargeName} seed={profile?.uid || 'incharge'} size={50} rounded="rounded-full" />
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] text-slate-500">
-            {greetingBn()} · {dayNameBn(today)}, {fmtDate(today, { year: false })}
+          <p className="text-[12.5px] font-bold text-brand-600">{greetingBn()}</p>
+          <p className="truncate text-[20px] font-extrabold leading-tight tracking-tight text-ink">{profile?.name || settings.inchargeName}</p>
+          <p className="mt-0.5 truncate text-[12.5px] text-slate-500">
+            {dayNameBn(today)}, {fmtDate(today, { year: false })}
+            {settings.className ? ` · ${settings.className}` : ''}
           </p>
-          <p className="truncate text-[17px] font-extrabold text-ink">{profile?.name || settings.inchargeName}</p>
         </div>
-        <IconButton icon={Bell} label="নোটিফিকেশন" badge={notifications.length || null} onClick={() => setNotifOpen(true)} />
+        <IconButton icon={Bell} label="নোটিফিকেশন" badge={notifications.length || null} onClick={() => setNotifOpen(true)} className="ring-1 ring-slate-100" />
       </div>
 
       {/* Quick Search */}
@@ -114,126 +118,33 @@ export const AdminDashboard = () => {
         <span className="flex-1">রোল, নাম বা ফোন দিয়ে খুঁজুন</span>
       </button>
 
-      {/* Today's Cash In Hand Bar */}
-      <div
-        className={cx(
-          'mt-3 flex items-center justify-between gap-3 rounded-2xl p-3 px-3.5 ring-1 shadow-card transition',
-          todayPayments.length > 0
-            ? 'bg-emerald-50/90 ring-emerald-200/80 cursor-pointer hover:bg-emerald-100/60'
-            : 'bg-emerald-50/60 ring-emerald-200/60',
-        )}
-        onClick={() => {
-          if (todayPayments.length > 0) setTodayPaymentsOpen(true);
-        }}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-700/25">
-            <Wallet className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[13px] font-bold text-emerald-950">আজকের ক্যাশ আদায়</span>
-              <span className="rounded-md bg-emerald-100/90 px-1.5 py-0.5 text-[10.5px] font-semibold text-emerald-800">
-                {dayNameBn(today)}
-              </span>
-            </div>
-            <p className="tabular mt-0.5 flex items-baseline gap-1.5 text-[12px] text-emerald-700">
-              <span className="text-[18px] font-extrabold text-emerald-950">
-                {taka(todayCollected)}
-              </span>
-              <span>· {todayPayments.length > 0 ? `${todayPayments.length}টি রশিদ আদায়` : 'আজ এখনো কোনো আদায় হয়নি'}</span>
-            </p>
-          </div>
+      {/* Today's cash in hand */}
+      <div className="mt-3 flex items-center gap-3 rounded-2xl bg-emerald-50/80 p-3 ring-1 ring-emerald-200/70 shadow-card">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-700/25">
+          <Wallet className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-emerald-950">
+            আজকের ক্যাশ
+            <span className="rounded bg-emerald-100 px-1.5 py-px text-[10.5px] font-semibold text-emerald-800">{dayNameBn(today)}</span>
+          </p>
+          <p className="tabular flex flex-wrap items-baseline gap-x-2 text-[12px] text-emerald-700">
+            <span className="text-[19px] font-extrabold leading-tight text-emerald-950">{taka(todayCollected)}</span>
+            <span>{todayPayments.length > 0 ? `${todayPayments.length}টি রশিদ` : 'এখনো কোনো আদায় হয়নি'}</span>
+          </p>
         </div>
-
-        {todayPayments.length > 0 && (
-          <Button
-            size="xs"
-            variant="success"
-            className="shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              setTodayPaymentsOpen(true);
-            }}
-          >
-            রশিদ দেখুন
-          </Button>
-        )}
+        <Button variant={todayPayments.length > 0 ? 'success' : 'secondary'} size="xs" className="shrink-0" onClick={() => openDayClose(today)}>
+          দিনের হিসাব
+        </Button>
       </div>
 
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-5">
       <div>
-      {/* Collection hero */}
-      <div className="relative mt-4 overflow-hidden rounded-[28px] bg-gradient-to-br from-brand-600 via-brand-700 to-brand-900 p-5 text-white shadow-lift">
-        <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-white/10" />
-        <div className="pointer-events-none absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-violet-400/20 blur-2xl" />
-        <div className="relative">
-          <div className="flex items-center justify-between">
-            <p className="text-[13.5px] font-semibold text-white/75">{monthBn(settings.currentMonth)} মাসের আদায়</p>
-            <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-[12px] font-bold">{pct}%</span>
-          </div>
-          <p className="tabular mt-1 text-[34px] font-extrabold leading-tight tracking-tight max-[374px]:text-[28px]">{taka(thisMonthCollection)}</p>
-          <p className="tabular text-[13px] text-white/70">
-            লক্ষ্য {taka(expected)} · বাকি {taka(thisMonthDue)}
-          </p>
-          <Progress value={pct} tone="white" track="bg-white/20" className="mt-3" />
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {[
-              { label: 'পরিশোধিত', value: paidCount, to: 'fees' },
-              { label: 'বাকি', value: pendingStudents.length - overdueStudents.length, to: 'due' },
-              { label: 'মেয়াদোত্তীর্ণ', value: overdueStudents.length, to: 'due', hot: true },
-            ].map((x) => (
-              <button
-                key={x.label}
-                type="button"
-                onClick={() => setActiveTab(x.to)}
-                className="press rounded-2xl bg-white/10 px-3 py-2.5 text-left ring-1 ring-inset ring-white/10 max-[374px]:px-2.5"
-              >
-                <p className={cx('tabular text-[20px] font-extrabold', x.hot && x.value > 0 && 'text-rose-200')}>{x.value}</p>
-                <p className="truncate text-[12px] text-white/70 max-[374px]:text-[11px]">{x.label}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Collection: one card per month, swipe for earlier / advance months */}
+      <MonthHero />
 
-      {missingFeeCount > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-3xl bg-brand-50 p-4 ring-1 ring-brand-100 max-[374px]:p-3.5">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-600 text-white">
-            <Wallet className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[14.5px] font-bold leading-snug text-ink">{monthBn(settings.currentMonth)} মাসের বেতন তৈরি হয়নি</p>
-            <p className="text-[12.5px] text-slate-600">{missingFeeCount} জন শিক্ষার্থী</p>
-          </div>
-          <Button
-            size="sm"
-            className="max-[374px]:w-full"
-            onClick={async () => {
-              const n = await generateMonthFees();
-              toast(`${n} জনের বেতন তৈরি হয়েছে`);
-            }}
-          >
-            তৈরি করুন
-          </Button>
-        </div>
-      )}
-
-      {/* Deadline alert */}
-      {overdueStudents.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-3xl bg-rose-50 p-4 ring-1 ring-rose-100 max-[374px]:p-3.5">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-500 text-white">
-            <TriangleAlert className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[14.5px] font-bold leading-snug text-rose-900">{overdueStudents.length} জন সময়সীমা পার করেছে</p>
-            <p className="text-[12.5px] text-rose-700">এক ট্যাপে অভিভাবকদের জানান</p>
-          </div>
-          <Button variant="success" size="sm" className="max-[374px]:w-full" onClick={() => openWhatsApp(overdueStudents)}>
-            <WhatsAppIcon className="h-4 w-4" /> পাঠান
-          </Button>
-        </div>
-      )}
+      {/* What needs doing today */}
+      <TodoCard onAbsent={() => setAbsentSheetOpen(true)} />
 
       {/* Quick actions */}
       <div className="mt-5 grid grid-cols-4 gap-2">
@@ -251,6 +162,8 @@ export const AdminDashboard = () => {
           </button>
         ))}
       </div>
+
+      <MonthHistory />
 
       </div>
 
@@ -331,15 +244,30 @@ export const AdminDashboard = () => {
 
       {/* KPIs */}
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <button type="button" onClick={() => setActiveTab('students')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
-          <Users className="h-5 w-5 text-brand-600" />
-          <p className="tabular mt-3 text-[24px] font-extrabold text-ink">{totalStudentsCount}</p>
-          <p className="text-[12.5px] text-slate-500">মোট শিক্ষার্থী · {activeStudentsCount} সক্রিয়</p>
+        <button
+          type="button"
+          onClick={() => setActiveTab('students')}
+          className="press flex flex-col items-center justify-center rounded-3xl bg-white p-4 text-center ring-1 ring-slate-200/80 shadow-card transition hover:shadow-md"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
+            <Users className="h-5 w-5" />
+          </span>
+          <p className="tabular mt-2.5 text-[24px] font-extrabold leading-tight text-ink">{totalStudentsCount}</p>
+          <p className="mt-1 text-[12px] font-medium text-slate-500">মোট শিক্ষার্থী · {activeStudentsCount} সক্রিয়</p>
         </button>
-        <button type="button" onClick={() => setActiveTab('due')} className="press rounded-3xl bg-white p-4 text-left shadow-card">
-          <Wallet className="h-5 w-5 text-rose-500" />
-          <p className="tabular mt-3 text-[24px] font-extrabold text-rose-600 max-[374px]:text-[20px]">{taka(totalDueAcrossAll)}</p>
-          <p className="text-[12.5px] text-slate-500">মোট বকেয়া (সব মিলিয়ে)</p>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('due')}
+          className="press flex flex-col items-center justify-center rounded-3xl bg-white p-4 text-center ring-1 ring-slate-200/80 shadow-card transition hover:shadow-md"
+        >
+          <span className="grid h-10 w-10 place-items-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
+            <Wallet className="h-5 w-5" />
+          </span>
+          <p className="tabular mt-2.5 text-[24px] font-extrabold leading-tight text-rose-600 max-[374px]:text-[20px]">
+            {taka(totalDueAcrossAll)}
+          </p>
+          <p className="mt-1 text-[12px] font-medium text-slate-500">মোট বকেয়া (সব মিলিয়ে)</p>
         </button>
       </div>
 
@@ -375,14 +303,7 @@ export const AdminDashboard = () => {
         absentStudents={absentStudentsToday}
       />
 
-      <TodayPaymentsSheet
-        open={todayPaymentsOpen}
-        onClose={() => setTodayPaymentsOpen(false)}
-        payments={todayPayments}
-        total={todayCollected}
-      />
-
-      <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="নোটিফিケーション" subtitle={`${notifications.length}টি সতর্কবার্তা`}>
+      <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="নোটিফিকেশন" subtitle={`${notifications.length}টি সতর্কবার্তা`}>
         {notifications.length === 0 ? (
           <EmptyState icon={CheckCircle2} title="সব ঠিক আছে" text="এই মুহূর্তে কোনো সতর্কবার্তা নেই" />
         ) : (
@@ -427,63 +348,6 @@ const LinkBtn = ({ children, onClick }) => (
     <ChevronRight className="h-4 w-4" />
   </button>
 );
-
-function TodayPaymentsSheet({ open, onClose, payments, total }) {
-  const { openReceipt } = useUI();
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      full={payments.length > 3}
-      title="আজকের ক্যাশ আদায়"
-      subtitle={`মোট ${taka(total)} · ${payments.length}টি রশিদ`}
-    >
-      <div className="space-y-3 pt-1">
-        <div className="flex items-center justify-between rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-200">
-          <div>
-            <p className="text-[12.5px] font-semibold text-emerald-800">মোট ক্যাশ জমার পরিমাণ</p>
-            <p className="tabular text-[24px] font-extrabold text-emerald-950">{taka(total)}</p>
-          </div>
-          <span className="rounded-xl bg-emerald-600 px-3 py-1.5 text-[13px] font-bold text-white shadow-sm">
-            {payments.length}টি লেনদেন
-          </span>
-        </div>
-
-        <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl bg-white">
-          {payments.length === 0 ? (
-            <p className="py-8 text-center text-[13.5px] text-slate-400">আজ এখনো কোনো ক্যাশ আদায় নেই</p>
-          ) : (
-            payments.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  onClose();
-                  setTimeout(() => openReceipt(p), 80);
-                }}
-                className="flex w-full items-center gap-3 p-3.5 text-left active:bg-slate-50"
-              >
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
-                  <ReceiptText className="h-5 w-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[14.5px] font-bold text-ink">{p.studentName}</p>
-                  <p className="text-[12px] text-slate-500">
-                    রোল {p.roll} · রশিদ: {p.receiptNo} · {p.method}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="tabular text-[15px] font-bold text-emerald-600">+{taka(p.amount)}</p>
-                  <span className="text-[11px] text-slate-400">রশিদ দেখুন ›</span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </div>
-    </Sheet>
-  );
-}
 
 function SearchSheet({ open, onClose }) {
   const { students, calculateStudentTotalDue } = useApp();

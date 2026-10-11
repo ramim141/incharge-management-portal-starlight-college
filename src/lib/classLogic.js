@@ -99,10 +99,16 @@ export const admissionPaidDefault = (feeStartMonth, now = new Date()) =>
 
 export const ADMISSION_NOTE = 'ভর্তির সময় আদায়';
 
-/** The same fee row, fully paid without a receipt (e.g. collected at admission) */
+/**
+ * The same fee row, paid without a receipt (e.g. collected at admission). Admission covers the
+ * monthly fee only — a student's transport part stays owed until it is collected.
+ */
 export function markFeePaid(fee, note = ADMISSION_NOTE) {
   const total = Number(fee.amount) + Number(fee.fine || 0) - Number(fee.fineWaived || 0);
-  return { ...fee, paid: total, due: 0, status: 'Paid', note: note || fee.note || '', settledAt: new Date().toISOString() };
+  const transport = Math.min(Math.max(0, Number(fee.transport) || 0), Math.max(0, total));
+  const paid = Math.max(Number(fee.paid || 0), total - transport);
+  const due = Math.max(0, total - paid);
+  return { ...fee, paid, due, status: due > 0 ? 'Partial' : 'Paid', note: note || fee.note || '', settledAt: new Date().toISOString() };
 }
 
 export const randomPin = () => {

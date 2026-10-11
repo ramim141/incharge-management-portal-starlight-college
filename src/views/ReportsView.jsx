@@ -1,20 +1,67 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Printer, Download } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, SelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
+import { PageHeader, SelectPill, MultiSelectPill, Card, Badge, Button, Progress, RollBadge, cx } from '../components/ui';
 import { taka, monthBn, studentTags, fmtDate, todayISO, feeBadge, feeStatus, METHODS, downloadCSV } from '../lib/format';
 import { periodOf } from '../lib/classLogic';
+import { YearSummary } from '../components/YearSummary';
+import { yearSummary, availableSessions, sessionStartOf, sessionLabel } from '../lib/summary';
 
 export const ReportsView = () => {
-  const { students, fees, fines, payments, settings, getStudentAttendanceStats, calculateStudentTotalDue, feeMonths } = useApp();
+  const { students, fees, fines, payments, attendance, settings, getStudentAttendanceStats, feeMonths, feeStartMonth, examFees } = useApp();
   const { toast, openStudent } = useUI();
   const [type, setType] = useState('sheet');
+  const nowD = new Date();
+  const currentSession = sessionStartOf(nowD.getFullYear(), nowD.getMonth());
+  const [session, setSession] = useState(currentSession);
+  const sessions = useMemo(() => availableSessions({ fees, payments, attendance, current: currentSession }), [fees, payments, attendance, currentSession]);
+  const ys = useMemo(() => yearSummary({ fees, payments, attendance, fines, startYear: session }), [fees, payments, attendance, fines, session]);
+  const [picked, setPicked] = useState([]); // periods like 2026-03; empty = all months (sheet) / this month (monthly)
 
-  const monthFees = fees
-    .filter((f) => f.month.toLowerCase() === settings.currentMonth.toLowerCase() && f.year === settings.currentYear)
+  // Every month that has a fee column (fee start → this month, plus any month with a fee row)
+  const currentPeriod = periodOf(settings.currentMonth, settings.currentYear);
+  // Before the class's fee start (earlier months were taken at admission) the first fee month is the one to show
+  const upto = feeStartMonth && feeStartMonth > currentPeriod ? feeStartMonth : currentPeriod;
+  const monthList = (() => {
+    const cols = new Map();
+    feeMonths.filter((m) => m.period <= upto).forEach((m) => cols.set(m.period, { month: m.month, year: m.year }));
+    fees.filter((f) => !f.beforeStart).forEach((f) => cols.set(periodOf(f.month, Number(f.year)), { month: f.month, year: Number(f.year) }));
+    return [...cols.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([period, m]) => ({ period, ...m }));
+  })();
+  const valid = picked.filter((p) => monthList.some((m) => m.period === p));
+  const isAll = type === 'sheet' && valid.length === 0;
+  const effective = valid.length ? valid : type === 'monthly' ? [currentPeriod] : [];
+  const selMonths = isAll ? monthList : monthList.filter((m) => effective.includes(m.period));
+  const multi = selMonths.length > 1;
+  const monthLabel = selMonths.length === 0 ? `${monthBn(settings.currentMonth)} ${settings.currentYear}` : selMonths.length <= 3 ? selMonths.map((m) => `${monthBn(m.month)} ${m.year}`).join(', ') : `${selMonths.length}টি মাস`;
+  const rangeKey = selMonths.length ? `${selMonths[0].period}${multi ? `_to_${selMonths[selMonths.length - 1].period}` : ''}` : currentPeriod;
+
+  // A month with no fee row yet (e.g. the coming November) is owed at the student's full rate, transport included
+  const admittedOf = (s) => (feeStartMonth ? '' : String(s.admissionDate || '').slice(0, 7));
+  const rateOf = (s) => Number(s.monthlyFee || settings.defaultMonthlyFee) || 0;
+  const transportOf = (s) => (s.transport ? Number(s.transportFee) || 0 : 0);
+  const virtualFee = (s, m) => {
+    const amount = rateOf(s);
+    return { id: `virtual-${s.id}-${m.period}`, studentId: s.id, roll: s.roll, month: m.month, year: m.year, amount, transport: transportOf(s), paid: 0, due: amount, fine: 0, status: 'Due', reason: '', note: '', virtual: true };
+  };
+  const feeCell = (s, m, own) => {
+    const row = own.find((f) => periodOf(f.month, Number(f.year)) === m.period);
+    if (row) return row;
+    if (m.period > upto || s.status === 'inactive') return null;
+    if (admittedOf(s) && m.period < admittedOf(s)) return null;
+    return virtualFee(s, m);
+  };
+
+  const monthFees = [
+    ...fees.filter((f) => selMonths.some((m) => m.period === periodOf(f.month, Number(f.year)))),
+    ...students.flatMap((s) => {
+      const own = fees.filter((f) => f.studentId === s.id);
+      return selMonths.map((m) => (own.some((f) => periodOf(f.month, Number(f.year)) === m.period) ? null : feeCell(s, m, own))).filter(Boolean);
+    }),
+  ]
     .map((f) => ({ f, s: students.find((x) => x.id === f.studentId || x.roll === Number(f.roll)), st: feeStatus(f) }))
-    .sort((a, b) => Number(a.f.roll) - Number(b.f.roll));
+    .sort((a, b) => Number(a.f.roll) - Number(b.f.roll) || periodOf(a.f.month, Number(a.f.year)).localeCompare(periodOf(b.f.month, Number(b.f.year))));
   const expected = monthFees.reduce((a, { f }) => a + Number(f.amount || 0) + Number(f.fine || 0), 0);
   const collected = monthFees.reduce((a, { f }) => a + Number(f.paid || 0), 0);
   const outstanding = monthFees.reduce((a, { f }) => a + Number(f.due || 0), 0);
@@ -26,8 +73,28 @@ export const ReportsView = () => {
   }));
   const methodMax = Math.max(1, ...byMethod.map((m) => m.total));
 
+  // Dues per student: every unpaid fee month (earlier months taken at admission are never owed), with its
+  // transport part shown separately, plus fines and exam fees
   const defaulters = students
-    .map((s) => ({ s, due: calculateStudentTotalDue(s.id) }))
+    .filter((s) => s.status !== 'inactive')
+    .map((s) => {
+      const own = fees.filter((f) => f.studentId === s.id);
+      const rows = [
+        ...own.filter((f) => !f.beforeStart),
+        ...monthList.filter((m) => !own.some((f) => periodOf(f.month, Number(f.year)) === m.period)).map((m) => feeCell(s, m, own)).filter(Boolean),
+      ]
+        .map((f) => {
+          const due = Number(f.due || 0);
+          const transport = Math.min(Number(f.transport ?? transportOf(s)) || 0, due);
+          return { month: f.month, year: Number(f.year), due, transport, tuition: due - transport };
+        })
+        .filter((r) => r.due > 0)
+        .sort((x, y) => periodOf(x.month, x.year).localeCompare(periodOf(y.month, y.year)));
+      const other =
+        fines.filter((f) => f.studentId === s.id).reduce((a, f) => a + Number(f.due || 0), 0) +
+        (examFees || []).filter((e) => e.studentId === s.id && e.status === 'Due').reduce((a, e) => a + Number(e.due || 0), 0);
+      return { s, rows, due: rows.reduce((a, r) => a + r.due, 0) + other };
+    })
     .filter((x) => x.due > 0)
     .sort((a, b) => b.due - a.due);
   const lowAtt = students
@@ -47,11 +114,7 @@ export const ReportsView = () => {
 
   // Fee sheet: one row per student, one column per month (what was paid in that month)
   const sheet = (() => {
-    const upto = periodOf(settings.currentMonth, settings.currentYear);
-    const cols = new Map();
-    feeMonths.filter((m) => m.period <= upto).forEach((m) => cols.set(m.period, { month: m.month, year: m.year }));
-    fees.filter((f) => !f.beforeStart).forEach((f) => cols.set(periodOf(f.month, Number(f.year)), { month: f.month, year: Number(f.year) }));
-    const months = [...cols.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([period, m]) => ({ period, ...m }));
+    const months = type === 'sheet' ? selMonths : monthList;
     const lateFine = (f) => Math.max(0, Number(f.fine || 0) - Number(f.fineWaived || 0));
     const rows = students
       .filter((s) => s.status !== 'inactive')
@@ -60,8 +123,8 @@ export const ReportsView = () => {
         const own = fees.filter((f) => f.studentId === s.id);
         const transport = s.transport ? Number(s.transportFee) || 0 : 0;
         const tuition = Number(s.tuitionFee ?? (s.monthlyFee || settings.defaultMonthlyFee)) || 0;
-        const counted = own.filter((f) => !f.beforeStart);
-        const cell = Object.fromEntries(own.map((f) => [periodOf(f.month, Number(f.year)), f]));
+        const cell = Object.fromEntries(monthList.map((m) => [m.period, feeCell(s, m, own)]).filter(([, f]) => f));
+        const counted = months.map((m) => cell[m.period]).filter((f) => f && !f.beforeStart);
         return {
           s,
           tuition,
@@ -78,18 +141,34 @@ export const ReportsView = () => {
     return { months, rows, totals: { tuition: sum('tuition'), transport: sum('transport'), fine: sum('fine'), payable: sum('payable'), paid: sum('paid'), due: sum('due') }, monthTotals };
   })();
 
+  // "নভেম্বর: বেতন ৳1,000 + পরিবহন ৳500" (transport only when the student has it)
+  const dueText = (r, bn) =>
+    bn
+      ? `${monthBn(r.month)}: ${r.transport > 0 ? `বেতন ${taka(r.tuition)} + পরিবহন ${taka(r.transport)}` : taka(r.due)}`
+      : `${r.month} ${r.year} ${r.transport > 0 ? `${r.tuition} + transport ${r.transport}` : r.due}`;
+
   const TITLES = {
-    sheet: 'ফি শিট — শিক্ষার্থী ও মাস অনুযায়ী',
+    sheet: isAll ? 'ফি শিট — শিক্ষার্থী ও মাস অনুযায়ী' : `ফি শিট — ${monthLabel}`,
     fines: 'জরিমানার রিপোর্ট',
-    monthly: `${monthBn(settings.currentMonth)} ${settings.currentYear} ফি রিপোর্ট`,
+    monthly: `${monthLabel} ফি রিপোর্ট`,
     defaulters: 'বকেয়া শিক্ষার্থীর তালিকা',
-    attendance: 'কম হাজিরার তালিকা (৭৫% এর নিচে)',
+    attendance: 'কম হাজিরার তালিকা (75% এর নিচে)',
+    year: `বছরের সারাংশ — সেশন ${sessionLabel(session)}`,
   };
 
   const exportCSV = () => {
-    if (type === 'sheet') {
+    if (type === 'year') {
       downloadCSV(
-        `${settings.classCode}_Fee_Sheet.csv`,
+        `${settings.classCode}_Year_${ys.label}.csv`,
+        ['Month', 'Target', 'Collected', 'Due', 'Collection %', 'Cash received', 'Class days', 'Absent marks', 'Attendance %', 'Fines', 'Fine amount'],
+        [
+          ...ys.months.map((m) => [`${m.month} ${m.year}`, m.target, m.collected, m.due, m.rate ?? '', m.cashIn, m.days, m.absent, m.attPct ?? '', m.fines, m.fineTotal]),
+          ['Total', ys.totals.target, ys.totals.collected, ys.totals.due, ys.totals.rate ?? '', ys.totals.cashIn, ys.totals.days, ys.totals.absent, ys.totals.attPct ?? '', ys.totals.fines, ys.totals.fineTotal],
+        ],
+      );
+    } else if (type === 'sheet') {
+      downloadCSV(
+        `${settings.classCode}_Fee_Sheet${isAll ? '' : `_${rangeKey}`}.csv`,
         ['Roll', 'Name', 'Monthly Fee', 'Transport Fee', ...sheet.months.map((m) => `${m.month} ${m.year}`), 'Fine', 'Total Payable', 'Total Paid', 'Due'],
         [
           ...sheet.rows.map((r) => [r.s.roll, r.s.name, r.tuition, r.transport, ...sheet.months.map((m) => (r.cell[m.period] ? (r.cell[m.period].beforeStart ? 'Admission' : r.cell[m.period].paid || 0) : '')), r.fine, r.payable, r.paid, r.due]),
@@ -98,9 +177,9 @@ export const ReportsView = () => {
       );
     } else if (type === 'monthly') {
       downloadCSV(
-        `${settings.currentMonth}_${settings.currentYear}_Fee_Report.csv`,
-        ['Roll', 'Name', 'Group', 'Monthly Fee', 'Fine', 'Paid', 'Due', 'Status', 'Reason', 'Note'],
-        monthFees.map(({ f, s, st }) => [f.roll, s?.name, s?.group, f.amount, f.fine || 0, f.paid || 0, f.due || 0, st, f.reason || '', f.note || '']),
+        `${rangeKey}_Fee_Report.csv`,
+        ['Month', 'Roll', 'Name', 'Group', 'Monthly Fee', 'Fine', 'Paid', 'Due', 'Status', 'Reason', 'Note'],
+        monthFees.map(({ f, s, st }) => [`${f.month} ${f.year}`, f.roll, s?.name, s?.group, f.amount, f.fine || 0, f.paid || 0, f.due || 0, st, f.reason || '', f.note || '']),
       );
     } else if (type === 'fines') {
       downloadCSV(
@@ -109,7 +188,7 @@ export const ReportsView = () => {
         fineRows.map((r) => [r.s.roll, r.s.name, r.count, r.absent, r.amount, r.waived, r.paid, r.due]),
       );
     } else if (type === 'defaulters') {
-      downloadCSV(`${settings.classCode}_Defaulters.csv`, ['Roll', 'Name', 'Group', 'Guardian Phone', 'Total Due'], defaulters.map(({ s, due }) => [s.roll, s.name, s.group, s.guardianPhone, due]));
+      downloadCSV(`${settings.classCode}_Defaulters.csv`, ['Roll', 'Name', 'Group', 'Guardian Phone', 'Due Months', 'Total Due'], defaulters.map(({ s, due, rows }) => [s.roll, s.name, s.group, s.guardianPhone, rows.map(dueText).join('; '), due]));
     } else {
       downloadCSV(
         `${settings.classCode}_Low_Attendance.csv`,
@@ -128,6 +207,7 @@ export const ReportsView = () => {
           value={type}
           onChange={setType}
           options={[
+            { value: 'year', label: 'বছরের সারাংশ' },
             { value: 'sheet', label: 'ফি শিট' },
             { value: 'monthly', label: 'মাসিক ফি' },
             { value: 'defaulters', label: 'বকেয়া', count: defaulters.length },
@@ -135,6 +215,15 @@ export const ReportsView = () => {
             { value: 'fines', label: 'জরিমানা', count: fineRows.filter((r) => r.due > 0).length },
           ]}
         />
+        {(type === 'sheet' || type === 'monthly') && (
+          <MultiSelectPill
+            label="মাস"
+            value={type === 'sheet' ? valid : effective}
+            onChange={(v) => setPicked(v)}
+            allLabel={type === 'sheet' ? 'সব মাস' : undefined}
+            options={[...monthList].reverse().map((m) => ({ value: m.period, label: `${monthBn(m.month)} ${m.year}` }))}
+          />
+        )}
       </PageHeader>
 
       <div className="mb-4 grid grid-cols-2 gap-2.5">
@@ -153,6 +242,8 @@ export const ReportsView = () => {
           <p className="mt-1 text-[15px] font-bold">{TITLES[type]}</p>
           <p className="text-[12px]">তৈরির তারিখ: {fmtDate(todayISO())}</p>
         </div>
+
+        {type === 'year' && <YearSummary ys={ys} sessions={sessions} session={session} onSession={setSession} currentPeriod={periodOf(settings.currentMonth, settings.currentYear)} />}
 
         {type === 'sheet' && (
           <>
@@ -277,7 +368,7 @@ export const ReportsView = () => {
             <Card className="p-5">
               <p className="text-[13px] font-semibold text-slate-500">{TITLES.monthly}</p>
               <div className="mt-3 grid grid-cols-3 gap-y-4">
-                <Kpi label="মোট শিক্ষার্থী" value={students.length} />
+                <Kpi label={multi ? 'মোট ফি-এর ঘর' : 'মোট শিক্ষার্থী'} value={multi ? monthFees.length : students.length} />
                 <Kpi label="পরিশোধিত" value={paidN} cls="text-emerald-600" />
                 <Kpi label="বাকি" value={monthFees.length - paidN} cls="text-rose-600" />
                 <Kpi label="প্রত্যাশিত" value={taka(expected)} />
@@ -288,7 +379,7 @@ export const ReportsView = () => {
             </Card>
 
             <Card className="p-5">
-              <p className="mb-3 text-[15px] font-bold text-ink">মাধ্যম অনুযায়ী আদায়</p>
+              <p className="mb-3 text-[15px] font-bold text-ink">মাধ্যম অনুযায়ী আদায় (সব সময়)</p>
               <div className="space-y-3">
                 {byMethod.map((m) => (
                   <div key={m.id} className="flex items-center gap-3">
@@ -309,6 +400,7 @@ export const ReportsView = () => {
                   <span className="tabular min-w-[2.25rem] text-[13px] font-bold text-slate-400">{f.roll}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[14.5px] font-semibold text-ink">{s?.name}</span>
+                    {multi && <span className="block truncate text-[12px] text-slate-500">{monthBn(f.month)} {f.year}</span>}
                     {f.reason && <span className="block truncate text-[12px] text-amber-700">{f.reason}</span>}
                   </span>
                   <span className="text-right">
@@ -331,7 +423,7 @@ export const ReportsView = () => {
               <p className="text-[15px] font-bold text-ink">{defaulters.length} জন</p>
               <p className="tabular text-[15px] font-extrabold text-rose-600">{taka(defaulters.reduce((a, x) => a + x.due, 0))}</p>
             </div>
-            {defaulters.map(({ s, due }) => (
+            {defaulters.map(({ s, due, rows }) => (
               <button key={s.id} type="button" onClick={() => openStudent(s)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
                 <RollBadge roll={s.roll} seed={s.id} size={38} />
                 <span className="min-w-0 flex-1">
@@ -339,6 +431,9 @@ export const ReportsView = () => {
                   <span className="tabular block text-[12.5px] text-slate-500">
                     {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ')}
                   </span>
+                  {rows.length > 0 && (
+                    <span className="tabular block text-[12px] text-rose-500">{rows.map((r) => dueText(r, true)).join(' · ')}</span>
+                  )}
                 </span>
                 <span className="tabular text-[15px] font-bold text-rose-600">{taka(due)}</span>
               </button>
@@ -364,7 +459,7 @@ export const ReportsView = () => {
                 <Progress value={st.percentage} tone="red" className="mt-2 h-1.5" />
               </button>
             ))}
-            {lowAtt.length === 0 && <p className="px-4 py-8 text-center text-[14px] text-slate-400">সবার হাজিরা ৭৫% বা তার বেশি 🎉</p>}
+            {lowAtt.length === 0 && <p className="px-4 py-8 text-center text-[14px] text-slate-400">সবার হাজিরা 75% বা তার বেশি 🎉</p>}
           </Card>
         )}
 

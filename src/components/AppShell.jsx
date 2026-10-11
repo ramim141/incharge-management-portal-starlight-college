@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   House, Users, CalendarCheck, LayoutGrid, Plus, CreditCard, TriangleAlert, ClipboardList,
   ReceiptText, ChartColumn, Settings, LogOut, UserRound, ChevronRight, Database, ArrowLeft, Building2,
-  KeyRound, Mail,
+  KeyRound, Mail, ScrollText, CalendarOff, Megaphone,
 } from 'lucide-react';
 import { AccountSheet } from './AccountSheets';
 import { useApp } from '../context/AppContext';
@@ -24,11 +24,14 @@ const MENU = [
   { id: 'payments', label: 'পেমেন্ট ও রশিদ', hint: 'লেনদেনের ইতিহাস', icon: ReceiptText, color: 'bg-emerald-50 text-emerald-600' },
   { id: 'exams', label: 'পরীক্ষা ও জরিমানা', hint: 'ফি, জরিমানা, মওকুফ', icon: ClipboardList, color: 'bg-amber-50 text-amber-600' },
   { id: 'reports', label: 'রিপোর্ট', hint: 'PDF ও Excel', icon: ChartColumn, color: 'bg-sky-50 text-sky-600' },
+  { id: 'notices', label: 'নোটিশ বোর্ড', hint: 'অভিভাবকের জন্য', icon: Megaphone, color: 'bg-orange-50 text-orange-600' },
+  { id: 'leaves', label: 'ছুটির আবেদন', hint: 'অভিভাবকের আবেদন', icon: CalendarOff, color: 'bg-sky-50 text-sky-600' },
+  { id: 'audit', label: 'অডিট লগ', hint: 'কে কী বদলেছেন', icon: ScrollText, color: 'bg-violet-50 text-violet-600' },
   { id: 'settings', label: 'সেটিংস', hint: 'ফি নিয়ম, টেমপ্লেট', icon: Settings, color: 'bg-slate-100 text-slate-600' },
 ];
 
 export function AppShell({ children }) {
-  const { activeTab, setActiveTab, overdueCount, settings, isFirestoreConnected, isPrincipal, exitClass, signOut, openPortal, profile } = useApp();
+  const { activeTab, setActiveTab, overdueCount, leaves, settings, isFirestoreConnected, isPrincipal, exitClass, signOut, openPortal, profile } = useApp();
   const { openPayment, confirm } = useUI();
   const [menuOpen, setMenuOpen] = useState(false);
   const [account, setAccount] = useState(null); // 'password' | 'email'
@@ -62,6 +65,7 @@ export function AppShell({ children }) {
   };
 
   const isMenuTab = MENU.some((m) => m.id === activeTab);
+  const pendingLeaveCount = (leaves || []).filter((l) => l.status === 'pending').length;
 
   const logout = async () => {
     setMenuOpen(false);
@@ -89,7 +93,7 @@ export function AppShell({ children }) {
 
       <nav
         className="no-print fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[480px] border-t border-slate-200/70 bg-white/90 shadow-nav backdrop-blur-xl md:bottom-4 md:max-w-[520px] md:rounded-[26px] md:border md:pb-0"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', viewTransitionName: 'app-nav' }}
       >
         <div className="grid h-[68px] grid-cols-5 max-[374px]:h-[62px]">
           {TABS.map((t) => {
@@ -123,7 +127,7 @@ export function AppShell({ children }) {
                   <Icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.4 : 2} />
                 </span>
                 <span className={cx('text-[11.5px] font-semibold max-[374px]:text-[10.5px]', active ? 'text-brand-700' : 'text-slate-500')}>{t.label}</span>
-                {t.id === 'more' && overdueCount > 0 && (
+                {t.id === 'more' && (overdueCount > 0 || pendingLeaveCount > 0) && (
                   <span className="absolute right-[22%] top-2 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
                 )}
               </button>
@@ -145,7 +149,7 @@ export function AppShell({ children }) {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-            {MENU.map((m) => {
+            {MENU.map((m, i) => {
               const Icon = m.icon;
               const active = activeTab === m.id;
               return (
@@ -154,7 +158,8 @@ export function AppShell({ children }) {
                   type="button"
                   onClick={() => go(m.id)}
                   className={cx(
-                    'press relative flex flex-col items-start gap-3 rounded-3xl p-4 text-left ring-1 ring-inset',
+                    'press relative flex min-h-[8.75rem] flex-col items-center justify-center gap-3 rounded-3xl p-4 text-center ring-1 ring-inset',
+                    MENU.length % 2 === 1 && i === MENU.length - 1 && 'col-span-2 sm:col-span-1',
                     active ? 'bg-brand-50/60 ring-brand-200' : 'bg-white ring-slate-200/80',
                   )}
                 >
@@ -165,6 +170,9 @@ export function AppShell({ children }) {
                     <span className="block text-[15px] font-bold leading-tight text-ink">{m.label}</span>
                     <span className="block text-[12.5px] text-slate-500">{m.hint}</span>
                   </span>
+                  {m.id === 'leaves' && pendingLeaveCount > 0 && (
+                    <span className="absolute right-3 top-3 rounded-full bg-rose-500 px-2 text-[12px] font-bold leading-5 text-white">{pendingLeaveCount}</span>
+                  )}
                   {m.id === 'due' && overdueCount > 0 && (
                     <span className="absolute right-3 top-3 rounded-full bg-rose-500 px-2 text-[12px] font-bold leading-5 text-white">{overdueCount}</span>
                   )}

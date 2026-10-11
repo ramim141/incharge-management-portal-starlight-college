@@ -18,6 +18,8 @@ export function UIProvider({ children }) {
   const [receipt, setReceipt] = useState(null); // { payment, fresh }
   const [whatsapp, setWhatsapp] = useState(null); // students[]
   const [fineId, setFineId] = useState(null);
+  const [editPayment, setEditPayment] = useState(null);
+  const [dayClose, setDayClose] = useState(null); // { date }
 
   const toast = useCallback((message, type = 'success') => {
     const id = ++idRef.current;
@@ -52,13 +54,25 @@ export function UIProvider({ children }) {
       openReceipt: (p, fresh = false) => setReceipt({ payment: p, fresh }),
       closeReceipt: () => setReceipt(null),
       whatsapp,
-      openWhatsApp: (list) => setWhatsapp(Array.isArray(list) ? list : [list]),
+      dayClose,
+      openDayClose: (date) => setDayClose({ date }),
+      closeDayClose: () => setDayClose(null),
+      openWhatsApp: (list) => {
+        const all = (Array.isArray(list) ? list : [list]).filter(Boolean);
+        const ready = all.filter((s) => s.guardianPhone);
+        if (ready.length === 0) return toast('অভিভাবকের ফোন নম্বর নেই', 'error');
+        if (ready.length < all.length) toast(`${all.length - ready.length} জনের ফোন নম্বর নেই, তাদের বাদ দেওয়া হয়েছে`, 'info');
+        setWhatsapp(ready);
+      },
       closeWhatsApp: () => setWhatsapp(null),
       fineId,
       openFine: (f) => setFineId(f?.id ?? f),
       closeFine: () => setFineId(null),
+      editPayment,
+      openEditPayment: (p) => setEditPayment(p),
+      closeEditPayment: () => setEditPayment(null),
     }),
-    [toast, confirm, studentId, studentForm, payment, receipt, whatsapp, fineId],
+    [toast, confirm, studentId, studentForm, payment, receipt, whatsapp, fineId, editPayment, dayClose],
   );
 
   const ICON = { success: CheckCircle2, error: AlertCircle, info: Info };
