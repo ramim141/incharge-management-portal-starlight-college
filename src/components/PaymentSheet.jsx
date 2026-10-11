@@ -132,16 +132,20 @@ function PaymentBody({ initialStudent }) {
       // Transport is part of the month's due; the receipt lists it as its own line
       const transport = sel.transport ? m.transport || 0 : 0;
       const monthlyPart = m.due - (m.transport || 0);
-      if (monthlyPart > 0) items.push({ description: `${m.month} ${m.year} Monthly Fee`, amount: monthlyPart });
-      if (transport > 0) items.push({ description: `${m.month} ${m.year} Transport Fee`, amount: transport });
+      const bMonth = monthBn(m.month);
+      if (monthlyPart > 0) items.push({ description: `${bMonth} ${m.year} মাসিক বেতন`, amount: monthlyPart });
+      if (transport > 0) items.push({ description: `${bMonth} ${m.year} পরিবহন ফি`, amount: transport });
     });
-    if (sel.fine && ctx.fine > 0) items.push({ description: `Fine (${ctx.activeFines.length})`, amount: ctx.fine });
-    if (sel.exam && ctx.exam > 0) items.push({ description: ctx.dueExam?.examName || 'Examination Fee', amount: ctx.exam });
+    if (sel.fine && ctx.fine > 0) items.push({ description: ctx.activeFines.length > 1 ? `জরিমানা (${ctx.activeFines.length}টি)` : 'জরিমানা', amount: ctx.fine });
+    if (sel.exam && ctx.exam > 0) {
+      const examTitle = ctx.dueExam?.examName ? (ctx.dueExam.examName.endsWith('ফি') ? ctx.dueExam.examName : `${ctx.dueExam.examName} ফি`) : 'পরীক্ষার ফি';
+      items.push({ description: examTitle, amount: ctx.exam });
+    }
     if (items.length === 0 || amount != null) {
       // Custom amount: record it as a single line so the receipt total stays honest
       items.length = 0;
-      const label = chosen.map((m) => `${m.month.slice(0, 3)} ${m.year}`).join(', ');
-      items.push({ description: chosen.length ? `Monthly Fee (${label})` : 'College Fee Payment', amount: total });
+      const label = chosen.map((m) => `${monthBn(m.month)} ${m.year}`).join(', ');
+      items.push({ description: chosen.length ? `মাসিক বেতন (${label})` : 'ফি পরিশোধ', amount: total });
     }
     const [y, m, d] = date.split('-').map(Number);
     const now = new Date();

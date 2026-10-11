@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp, studentIdFor } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
+import { StudentHistory } from './StudentHistory';
 import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
@@ -193,6 +194,7 @@ function StudentDetail({ student: s }) {
         options={[
           { value: 'fees', label: 'ফি' },
           { value: 'att', label: 'হাজিরা' },
+          { value: 'history', label: 'ইতিহাস' },
           { value: 'info', label: 'তথ্য' },
         ]}
       />
@@ -337,6 +339,8 @@ function StudentDetail({ student: s }) {
           {attLog.length === 0 ? <Empty text="হাজিরার রেকর্ড নেই" /> : <AttCalendar log={attLog} />}
         </div>
       )}
+
+      {tab === 'history' && <StudentHistory student={s} />}
 
       {tab === 'info' && (
         <div className="mt-4 space-y-4">

@@ -3,6 +3,7 @@ import { Trash2, Undo2, Save } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Sheet, RollBadge, Badge, Button, Field, Input, cx } from './ui';
+import { LinkedReceipts } from './LinkedReceipts';
 import { taka, fmtDate, FINE_STATUS } from '../lib/format';
 
 /** Edit one fine: change its amount or reason, waive all or part of it (মওকুফ), or undo a waiver */
@@ -115,6 +116,8 @@ function FineForm({ fine: f }) {
           </button>
         ))}
       </div>
+
+      <LinkedReceipts match={(p) => (p.settlement?.fines || []).some((x) => x.id === f.id) || (p.meta?.fineIds || []).includes(f.id)} />
 
       <Field label="কারণ">
         <Input value={reason} onChange={(e) => setReason(e.target.value)} />

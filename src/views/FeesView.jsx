@@ -16,7 +16,7 @@ export const REASONS = [
 ];
 
 export const FeesView = () => {
-  const { fees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth, feeMonths, generateArrears } = useApp();
+  const { fees, examFees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth, feeMonths, generateArrears } = useApp();
   const { openPayment, confirm, toast } = useUI();
 
   // The class's fee months: from its fee start month (e.g. Jan 2026 for a class with arrears)
@@ -70,14 +70,16 @@ export const FeesView = () => {
   const due = monthFees.reduce((a, f) => a + Number(f.due || 0), 0);
   const cnt = (k) => withStudent.filter(({ st }) => st === k || (k === 'Due' && st === 'Partial')).length;
 
+  // Rows already settled at admission may still owe their transport part — not "pending" for this button
+  const pending = students.filter((s) => s.status !== 'inactive').filter((s) => {
+    const row = monthFees.find((f) => f.studentId === s.id);
+    return !row || (Number(row.due) > 0 && !(row.note === ADMISSION_NOTE && Number(row.due) <= Number(row.transport || 0)));
+  }).length;
+
   const markAllPaid = async () => {
-    const pending = students.filter((s) => s.status !== 'inactive').filter((s) => {
-      const row = monthFees.find((f) => f.studentId === s.id);
-      return !row || Number(row.due) > 0;
-    }).length;
     const ok = await confirm({
       title: `${monthBn(month)} ${year}: সবাই পরিশোধিত?`,
-      message: `${pending} জনের ${monthBn(month)} মাসের বেতন "ভর্তির সময় আদায়" হিসেবে পরিশোধিত হবে। কোনো রশিদ তৈরি হবে না। কারো জন্য ভুল হলে পরে তার কার্ডে "বাকি করুন" চাপলেই ফেরত যাবে।`,
+      message: `${pending} জনের ${monthBn(month)} মাসের বেতন "ভর্তির সময় আদায়" হিসেবে পরিশোধিত হবে (যাদের পরিবহন ফি আছে তাদের পরিবহন ফি বাকি থাকবে)। কোনো রশিদ তৈরি হবে না। কারো জন্য ভুল হলে পরে তার কার্ডে "বাকি করুন" চাপলেই ফেরত যাবে।`,
       confirmText: 'পরিশোধিত করুন',
       icon: CheckCheck,
     });
@@ -174,7 +176,7 @@ export const FeesView = () => {
         </Card>
       </div>
 
-      {!beforeStart && (due > 0 || missing > 0) && (
+      {!beforeStart && pending > 0 && (
         <button
           type="button"
           onClick={markAllPaid}
@@ -215,6 +217,10 @@ export const FeesView = () => {
         <div className={cx('mt-3', CARD_GRID)}>
           {list.map(({ f, s, st }) => {
             const late = st === 'Overdue' ? daysLate(f.deadline) : 0;
+            // Transport is part of the month's fee (shown apart); an exam fee still owed is the student's own
+            const transport = Math.min(Math.max(0, Number(f.transport) || 0), Number(f.amount) || 0);
+            const exam = examFees.filter((e) => e.studentId === f.studentId && e.status === 'Due').reduce((a, e) => a + Number(e.due || 0), 0);
+            const cols = 3 + (transport > 0 ? 1 : 0) + (exam > 0 ? 1 : 0);
             return (
               <Card key={f.id} className="p-4">
                 <div className="flex items-center gap-3">
@@ -231,9 +237,11 @@ export const FeesView = () => {
                   </Badge>
                 </div>
 
-                <div className="tabular mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-center">
-                  <Amt label="ফি" value={f.amount} />
+                <div className="tabular mt-3 grid gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-center" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+                  <Amt label="ফি" value={Number(f.amount) - transport} />
+                  {transport > 0 && <Amt label="পরিবহন" value={transport} />}
                   <Amt label="জরিমানা" value={f.fine || 0} cls={f.fine ? 'text-amber-600' : ''} />
+                  {exam > 0 && <Amt label="পরীক্ষা ফি" value={exam} cls="text-amber-600" />}
                   <Amt label="বাকি" value={f.due || 0} cls={Number(f.due) > 0 ? 'text-rose-600' : 'text-emerald-600'} />
                 </div>
 
@@ -241,7 +249,7 @@ export const FeesView = () => {
                   <p className="mt-3 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {BEFORE_START_LABEL}</p>
                 )}
 
-                {!f.beforeStart && st === 'Paid' && f.note === ADMISSION_NOTE && (
+                {!f.beforeStart && (st === 'Paid' || st === 'Partial') && f.note === ADMISSION_NOTE && (
                   <div className="mt-3 flex items-center gap-2">
                     <p className="min-w-0 flex-1 truncate rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">✓ {ADMISSION_NOTE}</p>
                     <Button size="sm" variant="secondary" icon={Undo2} onClick={() => undoAdmission(f, s)}>

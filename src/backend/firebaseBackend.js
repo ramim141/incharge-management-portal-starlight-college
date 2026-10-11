@@ -5,7 +5,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, collection, onSnapshot, getDoc as fbGetDoc,
-  getDocs, writeBatch,
+  getDocs, writeBatch, waitForPendingWrites,
 } from 'firebase/firestore';
 
 // Generic document store on top of Firebase. Paths are arrays like ['classes', 'XI-2026', 'students', 'std-1'].
@@ -21,6 +21,22 @@ export function createFirebaseBackend(config) {
         localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
       })
     : getFirestore(app);
+
+  // Changes saved on this device that the server has not confirmed yet (also ones left from a
+  // previous visit): the app shows this so people know offline work is safe, and when it got through
+  let pending = 0;
+  const syncListeners = new Set();
+  const emitSync = () => syncListeners.forEach((cb) => cb({ online: typeof navigator === 'undefined' ? true : navigator.onLine, pending }));
+  const track = (promise) => {
+    pending += 1;
+    emitSync();
+    const done = () => {
+      pending = Math.max(0, pending - 1);
+      emitSync();
+    };
+    promise.then(done, done);
+  };
+  track(waitForPendingWrites(db));
 
   const errorListeners = new Set();
   const reportError = (e) => {
@@ -113,6 +129,12 @@ export function createFirebaseBackend(config) {
       }
     },
 
+    onSync(cb) {
+      syncListeners.add(cb);
+      cb({ online: typeof navigator === 'undefined' ? true : navigator.onLine, pending });
+      return () => syncListeners.delete(cb);
+    },
+
     subscribeDoc(path, cb) {
       return listen((onNext, onError) => onSnapshot(ref(path), (snap) => onNext(snap.exists() ? { id: snap.id, ...snap.data() } : null), onError), cb, null);
     },
@@ -144,6 +166,7 @@ export function createFirebaseBackend(config) {
         });
         commits.push(batch.commit());
       }
+      track(Promise.all(commits));
       const all = Promise.all(commits).catch((e) => {
         reportError(e);
         throw e;

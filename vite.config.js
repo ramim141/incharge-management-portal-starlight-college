@@ -5,6 +5,7 @@ import { defineConfig } from 'vite'
 // settings, and it gives every deploy new file names so no CDN/browser cache can serve old files.
 const version = (process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7) || new Date().toISOString().slice(0, 16).replace('T', ' ')
 
+// Styles: Tailwind is compiled at build time (tailwind.config.js + postcss.config.js), not in the browser
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Plus, ClipboardList, Gavel, ChevronDown, CheckCircle2, Undo2, CalendarDays, Pencil } from 'lucide-react';
+import { Plus, ClipboardList, Gavel, ChevronDown, Undo2, CalendarDays, Pencil, Trash2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, Segmented, Card, RollBadge, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SearchBar, FilterButton, cx, CARD_GRID } from '../components/ui';
+import { LinkedReceipts } from '../components/LinkedReceipts';
 import { taka, fmtDate, studentTags, FINE_STATUS } from '../lib/format';
 
 export const ExamFineView = () => {
@@ -43,6 +44,8 @@ function Exams({ onNew }) {
   const { examFees, students, recordPayment } = useApp();
   const { confirm, toast, openReceipt } = useUI();
   const [open, setOpen] = useState(null);
+  const [editRow, setEditRow] = useState(null); // one student's exam fee
+  const [editGroup, setEditGroup] = useState(null); // a whole exam
 
   const groups = useMemo(() => {
     const map = new Map();
@@ -71,7 +74,7 @@ function Exams({ onNew }) {
       roll: s.roll,
       studentName: s.name,
       amount: e.amount,
-      items: [{ description: e.examName, amount: e.amount }],
+      items: [{ description: e.examName.endsWith('ফি') ? e.examName : `${e.examName} ফি`, amount: e.amount }],
       method: 'Cash',
       examFeeId: e.id,
     });
@@ -95,13 +98,14 @@ function Exams({ onNew }) {
   }
 
   return (
+    <>
     <div className="space-y-3 md:grid md:grid-cols-2 md:items-start md:gap-3 md:space-y-0">
       {groups.map((g) => {
         const expanded = open === g.name;
         const pct = g.items.length ? (g.paid / g.items.length) * 100 : 0;
         return (
           <Card key={g.name} className="overflow-hidden">
-            <button type="button" onClick={() => setOpen(expanded ? null : g.name)} className="w-full p-4 text-left">
+            <button type="button" onClick={() => setOpen(expanded ? null : g.name)} className="w-full p-4 pb-3 text-left" aria-expanded={expanded}>
               <div className="flex items-start gap-3">
                 <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-600">
                   <ClipboardList className="h-5 w-5" />
@@ -113,38 +117,57 @@ function Exams({ onNew }) {
                     {g.deadline ? ` · শেষ তারিখ ${fmtDate(g.deadline, { year: false })}` : ''}
                   </p>
                 </div>
-                <ChevronDown className={cx('mt-1 h-5 w-5 text-slate-400 transition', expanded && 'rotate-180')} />
+                <ChevronDown className={cx('mt-1 h-5 w-5 shrink-0 text-slate-400 transition', expanded && 'rotate-180')} />
               </div>
-              <div className="mt-3 flex items-center justify-between text-[13px]">
-                <span className="tabular font-semibold text-ink">
-                  {g.paid}/{g.items.length} জন দিয়েছে
-                </span>
-                <span className="tabular text-slate-500">
-                  <span className="font-semibold text-emerald-600">{taka(g.collected)}</span> · বাকি <span className="font-semibold text-rose-600">{taka(g.due)}</span>
-                </span>
+              <div className="tabular mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-center">
+                <div>
+                  <p className="text-[11.5px] text-slate-400">দিয়েছে</p>
+                  <p className="text-[15px] font-bold text-ink">
+                    {g.paid}/{g.items.length}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11.5px] text-slate-400">আদায়</p>
+                  <p className="text-[15px] font-bold text-emerald-600">{taka(g.collected)}</p>
+                </div>
+                <div>
+                  <p className="text-[11.5px] text-slate-400">বাকি</p>
+                  <p className="text-[15px] font-bold text-rose-600">{taka(g.due)}</p>
+                </div>
               </div>
-              <Progress value={pct} className="mt-2" />
+              <Progress value={pct} className="mt-3" />
             </button>
+            <div className="px-4 pb-4">
+              <Button variant="secondary" icon={Pencil} block onClick={() => setEditGroup(g)}>
+                পরীক্ষা সম্পাদনা
+              </Button>
+            </div>
 
             {expanded && (
               <div className="divide-y divide-slate-100 border-t border-slate-100">
                 {g.items.map((e) => {
                   const s = students.find((x) => x.id === e.studentId || x.roll === Number(e.roll));
+                  const paid = e.status === 'Paid';
                   return (
                     <div key={e.id} className="flex items-center gap-3 px-4 py-3">
-                      <RollBadge roll={s?.roll ?? e.roll} seed={e.studentId} size={38} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14.5px] font-semibold text-ink">{s?.name || e.studentName || `রোল ${e.roll}`}</p>
-                      </div>
-                      {e.status === 'Paid' ? (
-                        <span className="flex items-center gap-1 text-[13px] font-semibold text-emerald-600">
-                          <CheckCircle2 className="h-4 w-4" /> পরিশোধিত
+                      <button type="button" onClick={() => setEditRow(e)} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label="সম্পাদনা">
+                        <RollBadge roll={s?.roll ?? e.roll} seed={e.studentId} size={40} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[14.5px] font-semibold text-ink">{s?.name || e.studentName || `রোল ${e.roll}`}</span>
+                          <span className={cx('tabular block text-[12.5px] font-medium', paid ? 'text-emerald-600' : 'text-rose-500')}>
+                            {paid ? `✓ পরিশোধিত ${taka(e.paid)}` : `বাকি ${taka(e.due || e.amount)}`}
+                            {Number(e.amount) !== Number(g.amount) && <span className="text-amber-600"> · ফি {taka(e.amount)}</span>}
+                          </span>
                         </span>
-                      ) : (
-                        <Button size="xs" variant="soft" onClick={() => collect(e)}>
-                          আদায় {taka(e.due || e.amount)}
+                      </button>
+                      {!paid && (
+                        <Button size="sm" variant="soft" onClick={() => collect(e)}>
+                          আদায়
                         </Button>
                       )}
+                      <button type="button" onClick={() => setEditRow(e)} aria-label="সম্পাদনা" className="press grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600">
+                        <Pencil className="h-[18px] w-[18px]" />
+                      </button>
                     </div>
                   );
                 })}
@@ -153,6 +176,133 @@ function Exams({ onNew }) {
           </Card>
         );
       })}
+    </div>
+    <Sheet open={!!editRow} onClose={() => setEditRow(null)} title="পরীক্ষার ফি সম্পাদনা" subtitle={editRow?.examName}>
+      {editRow && <ExamRowForm key={editRow.id} id={editRow.id} onDone={() => setEditRow(null)} />}
+    </Sheet>
+    <Sheet open={!!editGroup} onClose={() => setEditGroup(null)} title="পরীক্ষা সম্পাদনা" subtitle="সবার ক্ষেত্রে প্রযোজ্য">
+      {editGroup && <ExamGroupForm key={editGroup.name} group={editGroup} onDone={() => setEditGroup(null)} />}
+    </Sheet>
+    </>
+  );
+}
+
+/** One student's exam fee: change the fee (e.g. a concession), the deadline, or fix a collection through its receipt */
+function ExamRowForm({ id, onDone }) {
+  const { examFees, students, updateExamFees } = useApp();
+  const { toast } = useUI();
+  const e = examFees.find((x) => x.id === id);
+  const s = students.find((x) => x.id === e?.studentId);
+  const [amount, setAmount] = useState(String(e?.amount ?? ''));
+  const [deadline, setDeadline] = useState(e?.deadline || '');
+  if (!e) return null;
+
+  const paid = Number(e.paid || 0);
+  const amt = Number(amount) || 0;
+  const err = amt < paid ? `ইতিমধ্যে ${taka(paid)} পরিশোধ হয়েছে — এর কম করা যাবে না (আগে রশিদ বদলান বা বাতিল করুন)` : amt <= 0 ? 'ফি এর পরিমাণ দিন' : '';
+  const dirty = amt !== Number(e.amount) || deadline !== (e.deadline || '');
+
+  const save = async () => {
+    if (err) return;
+    await updateExamFees([e.id], { amount: amt, deadline });
+    toast('পরীক্ষার ফি আপডেট হয়েছে');
+    onDone();
+  };
+
+  return (
+    <div className="space-y-5 pt-1">
+      <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-3.5">
+        <RollBadge roll={s?.roll ?? e.roll} seed={e.studentId} size={48} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[16px] font-bold text-ink">{s?.name || e.studentName || `রোল ${e.roll}`}</p>
+          <p className="text-[13px] text-slate-500">{e.examName}</p>
+        </div>
+        <Badge tone={e.status === 'Paid' ? 'green' : 'amber'}>{e.status === 'Paid' ? 'পরিশোধিত' : 'বাকি'}</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[
+          ['ফি', amt, 'text-ink'],
+          ['পরিশোধ', paid, 'text-emerald-600'],
+          ['বাকি', Math.max(0, amt - paid), amt - paid > 0 ? 'text-rose-600' : 'text-emerald-600'],
+        ].map(([k, v, c]) => (
+          <div key={k} className="rounded-2xl bg-white py-2.5">
+            <p className={cx('tabular text-[16px] font-extrabold', c)}>{taka(v)}</p>
+            <p className="text-[12px] text-slate-500">{k}</p>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="ফি (৳)">
+          <Input type="number" inputMode="numeric" min={0} value={amount} onChange={(ev) => setAmount(ev.target.value)} />
+        </Field>
+        <Field label="শেষ তারিখ">
+          <Input type="date" value={deadline} onChange={(ev) => setDeadline(ev.target.value)} />
+        </Field>
+      </div>
+      <LinkedReceipts match={(p) => p.settlement?.exam?.id === e.id || p.meta?.examFeeId === e.id} />
+      {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
+      <Button size="lg" block disabled={!!err || !dirty} onClick={save}>
+        সংরক্ষণ করুন
+      </Button>
+    </div>
+  );
+}
+
+/** A whole exam: rename it, change the fee or the deadline for everyone, or remove it */
+function ExamGroupForm({ group, onDone }) {
+  const { updateExamFees, deleteExamFees } = useApp();
+  const { toast, confirm } = useUI();
+  const ids = group.items.map((i) => i.id);
+  const [name, setName] = useState(group.name);
+  const [amount, setAmount] = useState(String(group.amount ?? ''));
+  const [deadline, setDeadline] = useState(group.deadline || '');
+  const maxPaid = Math.max(0, ...group.items.map((i) => Number(i.paid || 0)));
+  const amt = Number(amount) || 0;
+  const err = !name.trim() ? 'পরীক্ষার নাম দিন' : amt < maxPaid ? `কেউ ${taka(maxPaid)} দিয়েছে — এর কম করা যাবে না` : amt <= 0 ? 'ফি এর পরিমাণ দিন' : '';
+
+  const save = async () => {
+    if (err) return;
+    await updateExamFees(ids, { examName: name.trim(), amount: amt, deadline });
+    toast('পরীক্ষা আপডেট হয়েছে');
+    onDone();
+  };
+  const remove = async () => {
+    const received = group.collected > 0;
+    const ok = await confirm({
+      title: 'পরীক্ষাটি মুছবেন?',
+      message: received ? `${taka(group.collected)} আদায় হয়েছে — রশিদ থাকবে, কিন্তু এই পরীক্ষার তালিকা মুছে যাবে।` : `${group.items.length} জনের "${group.name}" ফি মুছে যাবে।`,
+      confirmText: 'মুছে ফেলুন',
+      tone: 'danger',
+      icon: Trash2,
+    });
+    if (!ok) return;
+    await deleteExamFees(ids);
+    toast('পরীক্ষা মুছে ফেলা হয়েছে');
+    onDone();
+  };
+
+  return (
+    <div className="space-y-5 pt-1">
+      <Field label="পরীক্ষার নাম">
+        <Input value={name} onChange={(ev) => setName(ev.target.value)} />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="ফি (৳)" hint={`সবার জন্য · ${group.items.length} জন`}>
+          <Input type="number" inputMode="numeric" min={0} value={amount} onChange={(ev) => setAmount(ev.target.value)} />
+        </Field>
+        <Field label="শেষ তারিখ">
+          <Input type="date" value={deadline} onChange={(ev) => setDeadline(ev.target.value)} />
+        </Field>
+      </div>
+      {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{err}</p>}
+      <div className="space-y-2.5">
+        <Button size="lg" block disabled={!!err} onClick={save}>
+          সংরক্ষণ করুন
+        </Button>
+        <Button variant="soft-danger" block icon={Trash2} onClick={remove}>
+          পরীক্ষাটি মুছে ফেলুন
+        </Button>
+      </div>
     </div>
   );
 }
@@ -165,7 +315,6 @@ function Fines({ onNew }) {
   const [filters, setFilters] = useState({ status: 'Active' });
   const filter = filters.status;
   const [query, setQuery] = useState('');
-
   const byId = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
   const active = fines.filter((f) => f.status === 'Active');
   const activeTotal = active.reduce((a, f) => a + f.due, 0);
@@ -259,31 +408,33 @@ function Fines({ onNew }) {
             const s = byId.get(f.studentId);
             const isActive = f.status === 'Active';
             return (
-              <Card key={f.id} className={cx('p-4', !isActive && 'opacity-75')}>
+              <Card key={f.id} className="p-4">
                 <button type="button" onClick={() => openFine(f.id)} className="flex w-full items-center gap-3 text-left">
-                  <RollBadge roll={s?.roll ?? f.roll} seed={f.studentId} size={42} />
+                  <RollBadge roll={s?.roll ?? f.roll} seed={f.studentId} size={44} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-semibold text-ink">{s?.name || `রোল ${f.roll}`}</p>
-                    <p className="text-[12.5px] text-slate-500">
-                      {fmtDate(f.date)}
-                    </p>
+                    <p className="truncate text-[15.5px] font-semibold text-ink">{s?.name || `রোল ${f.roll}`}</p>
+                    <p className="text-[12.5px] text-slate-500">{fmtDate(f.date)}</p>
                   </div>
-                  <div className="text-right">
-                    <p className={cx('tabular text-[17px] font-extrabold', isActive ? 'text-rose-600' : 'text-slate-400 line-through')}>
+                  <div className="shrink-0 text-right">
+                    <p className={cx('tabular text-[18px] font-extrabold', isActive ? 'text-rose-600' : f.status === 'Paid' ? 'text-emerald-600' : 'text-slate-400 line-through')}>
                       {taka(isActive ? f.due : f.amount)}
                     </p>
-                    {f.waived > 0 && isActive && <p className="tabular text-[11.5px] text-slate-500">মওকুফ {taka(f.waived)}</p>}
+                    {isActive ? (
+                      f.waived > 0 && <p className="tabular text-[11.5px] text-slate-500">মওকুফ {taka(f.waived)}</p>
+                    ) : (
+                      <Badge tone={FINE_STATUS[f.status].tone}>{FINE_STATUS[f.status].bn}</Badge>
+                    )}
                   </div>
                 </button>
-                <div className="mt-3 flex items-center gap-2">
-                  <p className="min-w-0 flex-1 truncate rounded-xl bg-slate-50 px-3 py-2 text-[13.5px] text-slate-600">{f.reason}</p>
-                  <Button size="sm" variant="ghost" icon={Pencil} className="w-10 px-0" aria-label="এডিট" onClick={() => openFine(f.id)} />
-                  {isActive ? (
-                    <Button size="sm" variant="secondary" icon={Undo2} onClick={() => waive(f, s)}>
+                <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-[13.5px] leading-snug text-slate-600">{f.reason}</p>
+                <div className={cx('mt-3 grid gap-2.5', isActive ? 'grid-cols-2' : 'grid-cols-1')}>
+                  <Button variant="secondary" icon={Pencil} onClick={() => openFine(f.id)}>
+                    সম্পাদনা
+                  </Button>
+                  {isActive && (
+                    <Button variant="soft-danger" icon={Undo2} onClick={() => waive(f, s)}>
                       মওকুফ
                     </Button>
-                  ) : (
-                    <Badge tone={FINE_STATUS[f.status].tone}>{FINE_STATUS[f.status].bn}</Badge>
                   )}
                 </div>
               </Card>

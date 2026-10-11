@@ -11,6 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
+import { LeaveCard, useSentLeaves } from '../components/PortalExtras';
+import { NoticeBoard } from '../components/NoticeBoard';
 import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
 import {
   taka, monthBn, groupBn, fmtDate, feeStatus, EN_MONTHS, BN_MONTHS, FINE_STATUS, ATT_STATUS, ATT_ORDER, todayISO, dayNameBn,
@@ -261,7 +263,10 @@ function LoginCard({ onSuccess }) {
 }
 
 /** Feeds the read-only portal record to the same profile + receipt screens staff use */
-function PortalSession({ snap, onExit }) {
+function PortalSession({ snap: first, onExit }) {
+  // The record is kept up to date by the in-charge's app: follow it, so a leave decision or a new notice shows without logging in again
+  const [snap, setSnap] = useState(first);
+  useEffect(() => backend.subscribeDoc(['portal', first.id], (d) => d && setSnap(d)), [first.id]);
   const value = useMemo(() => {
     const s = snap.student;
     const now = new Date();
@@ -290,7 +295,7 @@ function PortalSession({ snap, onExit }) {
 
   return (
     <AppContext.Provider value={value}>
-      <StudentProfile student={snap.student} onExit={onExit} />
+      <StudentProfile student={snap.student} snap={snap} onExit={onExit} />
       <ReceiptSheet />
     </AppContext.Provider>
   );
@@ -304,10 +309,11 @@ const TABS = [
   { id: 'receipts', label: 'রশিদ', icon: ReceiptText },
 ];
 
-function StudentProfile({ student: s, onExit }) {
+function StudentProfile({ student: s, snap, onExit }) {
   const { fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats } = useApp();
   const { openReceipt } = useUI();
   const [tab, setTab] = useState('home');
+  const sent = useSentLeaves();
 
   const att = getStudentAttendanceStats(s.id);
   const sFees = useMemo(
@@ -383,6 +389,10 @@ function StudentProfile({ student: s, onExit }) {
                 <p className="relative mt-4 truncate border-t border-white/15 pt-3 text-[12.5px] text-white/75">{settings.sectionName}</p>
               </div>
 
+              <NoticeBoard notices={snap.notices} />
+
+              <LeaveCard snap={snap} sent={sent} />
+
               {total > 0 ? (
                 <Card className="overflow-hidden">
                   <div className="flex items-center gap-3 bg-rose-50 px-5 py-4">
@@ -412,7 +422,7 @@ function StudentProfile({ student: s, onExit }) {
                       ))}
                   </div>
                   <p className="border-t border-slate-100 px-5 py-3 text-[13px] text-slate-500">
-                    প্রতি মাসের {settings.defaultFeeDeadlineDay} তারিখের মধ্যে বেতন দিতে হবে। বিকাশ/নগদ বা কলেজ অফিসে পরিশোধ করো।
+                    প্রতি মাসের {settings.defaultFeeDeadlineDay} তারিখের মধ্যে বেতন দিতে হবে। কলেজ অফিসে এসে পরিশোধ করো।
                   </p>
                 </Card>
               ) : (
@@ -668,7 +678,7 @@ function AttendanceTab({ att, log }) {
           <div className="flex-1">
             <p className="text-[16px] font-bold text-ink">মোট হাজিরা</p>
             <p className="text-[13px] text-slate-500">মোট {att.totalClasses} ক্লাসের মধ্যে</p>
-            {att.percentage < 75 && att.totalClasses > 0 && <p className="mt-1 text-[12.5px] font-semibold text-rose-600">⚠ হাজিরা ৭৫% এর কম</p>}
+            {att.percentage < 75 && att.totalClasses > 0 && <p className="mt-1 text-[12.5px] font-semibold text-rose-600">⚠ হাজিরা 75% এর কম</p>}
           </div>
         </div>
         <div className="mt-4 grid grid-cols-4 gap-2 text-center">

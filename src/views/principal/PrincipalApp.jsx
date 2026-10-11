@@ -13,6 +13,7 @@ import {
   STAFF_COUNTER_PATH, DEFAULT_STAFF_PREFIX, loginIdPath, staffEmail, isStaffEmail, formatStaffId, nextStaffSerial, generateStaffPassword,
 } from '../../lib/staffLogin';
 import { AccountSheet } from '../../components/AccountSheets';
+import { ClassCompare } from '../../components/ClassCompare';
 import { useBackHandler } from '../../lib/backstack';
 const StudentImport = React.lazy(() => import('./StudentImport').then((m) => ({ default: m.StudentImport })));
 import { taka, monthBn, EN_MONTHS, waLink, fmtDate, todayISO } from '../../lib/format';
@@ -255,6 +256,8 @@ function Overview({
           <span className="text-[12.5px] font-bold text-ink">শিক্ষার্থী যোগ</span>
         </button>
       </div>
+
+      <ClassCompare classes={classes} onOpenClass={onOpenClass} />
 
       {/* Today's to-do: everything that needs the principal, in one place */}
       {(() => {

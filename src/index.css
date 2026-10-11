@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -110,5 +114,76 @@ input[type='number'] {
   }
   table.print-only {
     display: table !important;
+  }
+}
+
+/* ───────── Loading skeletons ───────── */
+@layer components {
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: #e6e9f3;
+    border-radius: 12px;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+    animation: skeletonShimmer 1.35s ease-in-out infinite;
+  }
+}
+@keyframes skeletonShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ───────── Motion ───────── */
+/* Children of .stagger glide in one after another (first ten; later ones appear together) */
+@keyframes staggerIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.stagger > * {
+  animation: staggerIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: 400ms;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 45ms; }
+.stagger > *:nth-child(3) { animation-delay: 90ms; }
+.stagger > *:nth-child(4) { animation-delay: 135ms; }
+.stagger > *:nth-child(5) { animation-delay: 180ms; }
+.stagger > *:nth-child(6) { animation-delay: 225ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(8) { animation-delay: 315ms; }
+.stagger > *:nth-child(9) { animation-delay: 360ms; }
+.stagger > *:nth-child(10) { animation-delay: 400ms; }
+
+/* Moving between sections: a short cross-fade; the bottom bar stays put */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.2s;
+  animation-timing-function: ease-out;
+}
+::view-transition-group(app-nav) {
+  animation-duration: 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

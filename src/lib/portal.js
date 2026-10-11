@@ -1,8 +1,9 @@
 import { groupBn, sectionBn, genderBn } from './format';
+import { leavesForPortal } from './leave';
 
 // What a student is allowed to see about themself. This record is stored under a key
 // derived from Student ID + PIN; it deliberately leaves out the PIN, fee reasons and admin notes.
-export function buildPortalSnapshot({ student: s, fees, examFees, fines, payments, attendance, settings, attStats, totalDue }) {
+export function buildPortalSnapshot({ student: s, fees, examFees, fines, payments, attendance, settings, attStats, totalDue, leaves = [], notices = [] }) {
   const attLog = Object.keys(attendance)
     .filter((d) => attendance[d]?.[s.id])
     .sort()
@@ -53,5 +54,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
     att: attStats,
     attLog,
     totalDue,
+    leaves: leavesForPortal(leaves, s.id),
+    notices,
   };
 }

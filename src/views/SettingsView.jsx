@@ -1,23 +1,27 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  School, Wallet, MessageSquareText, Database, HardDriveDownload, ChevronDown, Download, Upload, Save, Layers, Plus, X,
+  School, Wallet, MessageSquareText, Database, HardDriveDownload, BellRing, ChevronDown, Save, Layers, Plus, X,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, FeeStartSelect, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
-import { todayISO } from '../lib/format';
+import { BackupPanel } from '../components/BackupPanel';
+import { NotifySettings } from '../components/NotifySettings';
 
-const VARS = ['student_name', 'roll', 'month', 'monthly_fee', 'total_due', 'deadline', 'incharge_name', 'incharge_phone', 'class_name', 'portal_link'];
+const VARS = [
+  'student_name', 'roll', 'fee_summary', 'fee_breakdown', 'total_due',
+  'month', 'monthly_fee', 'deadline', 'incharge_name', 'incharge_phone',
+  'class_name', 'portal_link',
+];
 const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
 const pick = (o) => Object.fromEntries(EDITABLE.map((k) => [k, o[k] ?? '']));
 
 export const SettingsView = () => {
   const {
-    settings, setSettings, isLocal, isPrincipal, importBackup, classId,
-    students, fees, examFees, fines, payments, attendance, calculateStudentTotalDue,
+    settings, setSettings, isLocal, isPrincipal, classId,
+    students, generateWhatsAppMessage,
   } = useApp();
-  const { toast, confirm } = useUI();
-  const fileRef = useRef(null);
+  const { toast } = useUI();
 
   const [form, setForm] = useState(() => pick(settings));
   const [open, setOpen] = useState('profile');
@@ -34,59 +38,9 @@ export const SettingsView = () => {
 
   const preview = (() => {
     const s = students[0];
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const portalUrl = origin ? (s ? `${origin}?roll=${s.roll}` : origin) : '';
-    if (!s) return String(form.whatsappTemplate).replace(/\{portal_link\}/g, portalUrl);
-    const fee = fees.find((f) => f.studentId === s.id && f.month === settings.currentMonth);
-    return String(form.whatsappTemplate)
-      .replace(/\{student_name\}/g, s.name)
-      .replace(/\{month\}/g, settings.currentMonth)
-      .replace(/\{monthly_fee\}/g, fee?.amount || form.defaultMonthlyFee)
-      .replace(/\{total_due\}/g, calculateStudentTotalDue(s.id))
-      .replace(/\{deadline\}/g, `${form.defaultFeeDeadlineDay} ${settings.currentMonth} ${settings.currentYear}`)
-      .replace(/\{incharge_name\}/g, form.inchargeName)
-      .replace(/\{incharge_phone\}/g, form.inchargePhone)
-      .replace(/\{class_name\}/g, settings.className)
-      .replace(/\{roll\}/g, s.roll)
-      .replace(/\{portal_link\}/g, portalUrl);
+    if (!s) return 'কোনো শিক্ষার্থী পাওয়া যায়নি';
+    return generateWhatsAppMessage(s, form.whatsappTemplate);
   })();
-
-  const backup = () => {
-    const data = { version: '2.0', exportDate: new Date().toISOString(), classId, institution: settings.institutionName, students, fees, examFees, fines, payments, attendance, settings };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${classId}_Backup_${todayISO()}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    toast('ব্যাকআপ ফাইল ডাউনলোড হয়েছে');
-  };
-
-  const onImport = async (e) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch {
-      return toast('ফাইলটি সঠিক ব্যাকআপ নয়', 'error');
-    }
-    if (!Array.isArray(data.students)) return toast('ফাইলে শিক্ষার্থীর তথ্য নেই', 'error');
-    const ok = await confirm({
-      title: 'ব্যাকআপ ইমপোর্ট করবেন?',
-      message: `${data.students.length} জন শিক্ষার্থী ও তাদের বেতন, হাজিরা, পেমেন্ট এই ক্লাসে (${settings.className}) যোগ হবে। একই আইডির তথ্য থাকলে বদলে যাবে।`,
-      confirmText: 'ইমপোর্ট',
-      icon: Upload,
-    });
-    if (!ok) return;
-    try {
-      const n = await importBackup(data);
-      toast(`${n} জন শিক্ষার্থীর তথ্য ইমপোর্ট হয়েছে`);
-    } catch (err) {
-      toast(`ইমপোর্ট ব্যর্থ: ${err.message}`, 'error');
-    }
-  };
 
   return (
     <div>
@@ -210,6 +164,10 @@ export const SettingsView = () => {
           </div>
         </Section>
 
+        <Section id="notify" open={open} setOpen={setOpen} icon={BellRing} color="bg-rose-50 text-rose-600" title="নোটিফিকেশন" hint="ছুটির আবেদন ও দিনের কাজের খবর">
+          <NotifySettings />
+        </Section>
+
         <Section
           id="data"
           open={open}
@@ -226,13 +184,7 @@ export const SettingsView = () => {
               ? 'এটি পরীক্ষামূলক ডাটাবেজ — তথ্য শুধু এই ব্রাউজারে থাকে।'
               : 'সব তথ্য Firebase Cloud-এ থাকে। ইন্টারনেট না থাকলেও কাজ করা যায় — সংযোগ এলে আপনাআপনি সিঙ্ক হয়।'}
           </div>
-          <Button variant="secondary" icon={Download} block onClick={backup}>
-            ব্যাকআপ ডাউনলোড (JSON)
-          </Button>
-          <Button variant="secondary" icon={Upload} block onClick={() => fileRef.current?.click()}>
-            ব্যাকআপ থেকে ইমপোর্ট
-          </Button>
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImport} />
+          <BackupPanel />
         </Section>
       </div>
 

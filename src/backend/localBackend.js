@@ -92,6 +92,11 @@ export function createLocalBackend() {
       return () => errorListeners.delete(cb);
     },
 
+    onSync(cb) {
+      cb({ online: true, pending: 0 });
+      return () => {};
+    },
+
     onAuth(cb) {
       authListeners.add(cb);
       queueMicrotask(() => cb(currentUser()));

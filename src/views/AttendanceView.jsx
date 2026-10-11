@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info, UserCheck } from 'lucide-react';
 import { RollCall } from '../components/RollCall';
+import { leaveDefaultsFor } from '../lib/leave';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx } from '../components/ui';
@@ -66,14 +67,16 @@ function AttendanceHelp({ open, onClose, fine }) {
 }
 
 export const AttendanceView = () => {
-  const { students, attendance, saveAttendanceRecord, getStudentAttendanceStats, settings, absenceFineFor } = useApp();
+  const { students, attendance, leaves, saveAttendanceRecord, getStudentAttendanceStats, settings, absenceFineFor } = useApp();
   const { toast, openStudent, confirm } = useUI();
 
   const [tab, setTab] = useState('sheet');
   const [date, setDate] = useState(todayISO());
   const FILTER_DEFAULTS = { group: 'All', section: 'All', gender: 'All' };
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
-  const [records, setRecords] = useState(() => ({ ...(attendance[todayISO()] || {}) }));
+  // A day not yet taken starts with everyone on approved leave already marked "Leave"
+  const startOf = (d) => (attendance[d] ? { ...attendance[d] } : leaveDefaultsFor(leaves || [], d));
+  const [records, setRecords] = useState(() => startOf(todayISO()));
   const [dirty, setDirty] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
   // How-to popup shown when the page opens, until the teacher ticks "আর দেখাবেন না"
@@ -103,7 +106,7 @@ export const AttendanceView = () => {
       if (!ok) return;
     }
     setDate(next);
-    setRecords({ ...(attendance[next] || {}) });
+    setRecords(startOf(next));
     setDirty(false);
   };
 
@@ -365,7 +368,7 @@ function Summary({ students, getStats, onOpen }) {
     <>
       {low > 0 && (
         <div className="mb-3 rounded-2xl bg-rose-50 px-4 py-3 text-[13.5px] font-medium text-rose-700 ring-1 ring-rose-100">
-          {low} জনের হাজিরা ৭৫% এর নিচে — তালিকার উপরে দেখানো হচ্ছে
+          {low} জনের হাজিরা 75% এর নিচে — তালিকার উপরে দেখানো হচ্ছে
         </div>
       )}
       <Card className="divide-y divide-slate-100 overflow-hidden md:grid md:grid-cols-2 md:divide-y-0">

@@ -15,7 +15,7 @@ export function WhatsAppSheet() {
       onClose={closeWhatsApp}
       full={n > 1}
       title="WhatsApp রিমাইন্ডার"
-      subtitle={n > 1 ? `${n} জন অভিভাবক` : 'অভিভাবককে বকেয়া নোটিশ'}
+      subtitle={n > 1 ? `${n} জন অভিভাবক` : 'অভিভাবককে ফি রিমাইন্ডার'}
     >
       {n > 0 && <Body list={whatsapp} />}
     </Sheet>
@@ -23,7 +23,7 @@ export function WhatsAppSheet() {
 }
 
 function Body({ list }) {
-  const { generateWhatsAppMessage, calculateStudentTotalDue } = useApp();
+  const { generateWhatsAppMessage, getStudentDueItems, markReminded } = useApp();
   const [idx, setIdx] = useState(0);
   const [edits, setEdits] = useState({});
   const [sent, setSent] = useState(() => new Set());
@@ -31,11 +31,13 @@ function Body({ list }) {
 
   const s = list[idx];
   const message = edits[s.id] ?? generateWhatsAppMessage(s);
-  const due = calculateStudentTotalDue(s.id);
+  const items = getStudentDueItems(s);
+  const due = items.reduce((a, i) => a + i.amount, 0);
   const multi = list.length > 1;
 
   const markSent = () => {
     setSent((prev) => new Set(prev).add(s.id));
+    markReminded([s.id]);
     if (multi) {
       // Move on to the next guardian who hasn't been messaged yet
       setTimeout(() => {
@@ -96,17 +98,31 @@ function Body({ list }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[11.5px] text-slate-400">মোট বাকি</p>
+          <p className="text-[11.5px] text-slate-400">মোট প্রদেয় ফি</p>
           <p className="tabular text-[17px] font-extrabold text-rose-600">{taka(due)}</p>
         </div>
       </div>
+
+      {items.length > 0 && (
+        <div className="rounded-2xl bg-rose-50/70 px-4 py-3">
+          <p className="mb-1.5 text-[12px] font-bold text-rose-700">কিসের বাকি</p>
+          <ul className="tabular space-y-1 text-[13.5px] text-slate-700">
+            {items.map((it) => (
+              <li key={it.name} className="flex justify-between gap-3">
+                <span>{it.name}</span>
+                <b className="text-rose-600">{taka(it.amount)}</b>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Chat-style preview — edit in place */}
       <div className="rounded-3xl bg-[#efeae2] p-3">
         <div className="relative ml-auto max-w-[94%] rounded-2xl rounded-tr-md bg-[#d9fdd3] p-1 shadow-sm">
           <textarea
             value={message}
-            rows={9}
+            rows={14}
             onChange={(e) => setEdits((m) => ({ ...m, [s.id]: e.target.value }))}
             className="block w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed text-[#111b21] outline-none"
           />

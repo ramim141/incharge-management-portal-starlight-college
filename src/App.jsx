@@ -5,14 +5,12 @@ import { AppProvider, useApp } from './context/AppContext';
 import { UIProvider, useUI } from './context/UIContext';
 import { backend, backendMissing, errorText } from './backend';
 import { AppShell } from './components/AppShell';
-import { PaymentSheet } from './components/PaymentSheet';
-import { ReceiptSheet } from './components/ReceiptSheet';
-import { WhatsAppSheet } from './components/WhatsAppSheet';
-import { FineSheet } from './components/FineSheet';
-import { StudentDetailSheet, StudentFormSheet } from './components/StudentSheets';
 import { ForcePasswordChange, AccountSheet } from './components/AccountSheets';
 import { InstallPrompt } from './components/InstallPrompt';
 import { Button, Logo } from './components/ui';
+import { PageSkeleton, ShellSkeleton } from './components/Skeletons';
+import { SyncStatus } from './components/SyncStatus';
+import { Notifier } from './components/Notifier';
 
 // Lazy-loaded views for code splitting
 // Staff sessions: start downloading the main screens right away, in parallel with sign-in
@@ -20,6 +18,16 @@ if (typeof window !== 'undefined' && localStorage.getItem('xi_view') === 'staff'
   import('./views/AdminDashboard');
   import('./views/principal/PrincipalApp');
 }
+
+// Global sheets: fetched right after the first screen is up, not part of the first download
+const PaymentSheet = lazy(() => import('./components/PaymentSheet').then((m) => ({ default: m.PaymentSheet })));
+const PaymentEditSheet = lazy(() => import('./components/PaymentEditSheet').then((m) => ({ default: m.PaymentEditSheet })));
+const ReceiptSheet = lazy(() => import('./components/ReceiptSheet').then((m) => ({ default: m.ReceiptSheet })));
+const WhatsAppSheet = lazy(() => import('./components/WhatsAppSheet').then((m) => ({ default: m.WhatsAppSheet })));
+const DayCloseSheet = lazy(() => import('./components/DayCloseSheet').then((m) => ({ default: m.DayCloseSheet })));
+const FineSheet = lazy(() => import('./components/FineSheet').then((m) => ({ default: m.FineSheet })));
+const StudentDetailSheet = lazy(() => import('./components/StudentSheets').then((m) => ({ default: m.StudentDetailSheet })));
+const StudentFormSheet = lazy(() => import('./components/StudentSheets').then((m) => ({ default: m.StudentFormSheet })));
 
 const StudentPortal = lazy(() => import('./views/StudentPortal').then((m) => ({ default: m.StudentPortal })));
 const AdminLogin = lazy(() => import('./views/AdminLogin').then((m) => ({ default: m.AdminLogin })));
@@ -32,6 +40,9 @@ const PaymentsView = lazy(() => import('./views/PaymentsView').then((m) => ({ de
 const DueStudentsView = lazy(() => import('./views/DueStudentsView').then((m) => ({ default: m.DueStudentsView })));
 const ExamFineView = lazy(() => import('./views/ExamFineView').then((m) => ({ default: m.ExamFineView })));
 const ReportsView = lazy(() => import('./views/ReportsView').then((m) => ({ default: m.ReportsView })));
+const LeavesView = lazy(() => import('./views/LeavesView').then((m) => ({ default: m.LeavesView })));
+const NoticesView = lazy(() => import('./views/NoticesView').then((m) => ({ default: m.NoticesView })));
+const AuditView = lazy(() => import('./views/AuditView').then((m) => ({ default: m.AuditView })));
 const SettingsView = lazy(() => import('./views/SettingsView').then((m) => ({ default: m.SettingsView })));
 
 const VIEWS = {
@@ -44,6 +55,9 @@ const VIEWS = {
   exams: ExamFineView,
   reports: ReportsView,
   settings: SettingsView,
+  audit: AuditView,
+  leaves: LeavesView,
+  notices: NoticesView,
 };
 
 const VIEW_KEY = 'xi_view';
@@ -55,15 +69,6 @@ export function Splash({ text = 'লোড হচ্ছে…' }) {
         <Logo size={88} className="animate-pulse drop-shadow-md" />
         <p className="text-[14px] font-medium text-slate-500">{text}</p>
       </div>
-    </div>
-  );
-}
-
-// In-app section loading: a quiet inline spinner, not a full-screen splash
-function ViewLoading() {
-  return (
-    <div className="grid place-items-center py-32">
-      <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600" />
     </div>
   );
 }
@@ -114,12 +119,15 @@ function ClassViews() {
       import('./views/ExamFineView');
       import('./views/ReportsView');
       import('./views/SettingsView');
+      import('./views/AuditView');
+      import('./views/LeavesView');
+      import('./views/NoticesView');
     };
     const id = window.requestIdleCallback ? window.requestIdleCallback(warm) : setTimeout(warm, 1500);
     return () => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : clearTimeout(id));
   }, []);
 
-  if (loading) return <Splash text="ক্লাসের তথ্য আনা হচ্ছে…" />;
+  if (loading) return <ShellSkeleton />;
   if (!classDoc) {
     return (
       <Notice
@@ -139,7 +147,7 @@ function ClassViews() {
             // Hidden sections keep their state but stop re-rendering on every data change
             <Activity key={id} mode={id === activeTab ? 'visible' : 'hidden'}>
               <div className="animate-fade">
-                <Suspense fallback={<ViewLoading />}>
+                <Suspense fallback={<PageSkeleton id={id} />}>
                   <View />
                 </Suspense>
               </div>
@@ -147,13 +155,18 @@ function ClassViews() {
           );
         })}
       </AppShell>
+      <Notifier />
       {/* Global sheets — any screen can open these through useUI() */}
-      <StudentDetailSheet />
-      <StudentFormSheet />
-      <PaymentSheet />
-      <ReceiptSheet />
-      <WhatsAppSheet />
-      <FineSheet />
+      <Suspense fallback={null}>
+        <StudentDetailSheet />
+        <StudentFormSheet />
+        <PaymentSheet />
+        <PaymentEditSheet />
+        <ReceiptSheet />
+        <WhatsAppSheet />
+        <FineSheet />
+        <DayCloseSheet />
+      </Suspense>
     </>
   );
 }
@@ -265,6 +278,7 @@ export default function App() {
     <AuthProvider>
       <UIProvider>
         <Root />
+        <SyncStatus />
         <InstallPrompt />
       </UIProvider>
     </AuthProvider>
