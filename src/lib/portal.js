@@ -28,6 +28,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
       fatherName: s.fatherName || '',
       motherName: s.motherName || '',
       guardianPhone: s.guardianPhone || '',
+      studentPhone: s.studentPhone || '',
       address: s.address || '',
       admissionDate: s.admissionDate || '',
       monthlyFee: s.monthlyFee || 0,

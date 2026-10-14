@@ -188,7 +188,11 @@ export const ReportsView = () => {
         fineRows.map((r) => [r.s.roll, r.s.name, r.count, r.absent, r.amount, r.waived, r.paid, r.due]),
       );
     } else if (type === 'defaulters') {
-      downloadCSV(`${settings.classCode}_Defaulters.csv`, ['Roll', 'Name', 'Group', 'Guardian Phone', 'Due Months', 'Total Due'], defaulters.map(({ s, due, rows }) => [s.roll, s.name, s.group, s.guardianPhone, rows.map(dueText).join('; '), due]));
+      downloadCSV(
+        `${settings.classCode}_Defaulters.csv`,
+        ['Roll', 'Name', 'Group', 'Guardian Phone', 'Student Phone', 'Due Months', 'Total Due'],
+        defaulters.map(({ s, due, rows }) => [s.roll, s.name, s.group, s.guardianPhone, s.studentPhone || '', rows.map(dueText).join('; '), due]),
+      );
     } else {
       downloadCSV(
         `${settings.classCode}_Low_Attendance.csv`,

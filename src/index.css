@@ -106,6 +106,9 @@ input[type='number'] {
     overflow: visible !important;
     box-shadow: none !important;
   }
+  .print-area .overflow-x-auto {
+    overflow: visible !important;
+  }
   .no-print {
     display: none !important;
   }

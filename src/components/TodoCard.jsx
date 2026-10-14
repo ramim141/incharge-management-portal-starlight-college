@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { BellRing, Clock3, CalendarCheck, UserX, Wallet, ClipboardList, Bus, Gavel, ShieldAlert, PhoneOff, ChevronRight, CheckCircle2, Lock, HardDriveDownload, CalendarOff } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
@@ -25,11 +25,33 @@ export function TodoCard({ onAbsent }) {
   } = useApp();
   const { openWhatsApp, openDayClose, toast } = useUI();
 
+  const [waTick, setWaTick] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setWaTick((t) => t + 1);
+    window.addEventListener('absent_wa_sent_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('absent_wa_sent_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
   const items = useMemo(() => {
     const today = todayISO();
     const active = students.filter((s) => s.status !== 'inactive');
     const rec = attendance[today];
-    const absentToday = rec ? active.filter((s) => rec[s.id] === 'Absent').length : 0;
+    const absentStudents = rec ? active.filter((s) => rec[s.id] === 'Absent') : [];
+
+    let sentSet = new Set();
+    try {
+      const stored = localStorage.getItem(`absent_wa_sent_${classId || 'default'}_${today}`);
+      if (stored) sentSet = new Set(JSON.parse(stored));
+    } catch {}
+
+    const pendingAbsent = absentStudents.filter((s) => !sentSet.has(s.id) && (s.guardianPhone || s.studentPhone));
+    const pendingCount = pendingAbsent.length;
+
     const isFriday = new Date().getDay() === 5; // weekly holiday: no attendance nudge
     const examTomorrow = [...new Set(examFees.filter((e) => e.status === 'Due' && e.deadline === shiftISODate(today, 1)).map((e) => e.examName))];
     const transport = active.filter((s) => studentDueItems(s.id, { fees }).some((i) => i.kind === 'transport'));
@@ -39,7 +61,7 @@ export function TodoCard({ onAbsent }) {
       const st = getStudentAttendanceStats(s.id);
       return st.totalClasses > 0 && st.percentage < 75;
     }).length;
-    const noPhone = active.filter((s) => !s.guardianPhone).length;
+    const noPhone = active.filter((s) => !s.guardianPhone && !s.studentPhone).length;
     // Cash of the day: nothing to close on a day without receipts; a closed day whose money later changed needs closing again
     const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
     const backupAge = daysSince(lastBackupAt(classId));
@@ -53,7 +75,15 @@ export function TodoCard({ onAbsent }) {
       q.overdue.length > 0 && { id: 'overdue', tone: 'red', icon: BellRing, title: `${q.overdue.length} জনের শেষ তারিখ পার হয়েছে`, text: 'অভিভাবককে রিমাইন্ডার পাঠান', act: 'পাঠান', go: () => openWhatsApp(q.overdue) },
       q.upcoming.length > 0 && { id: 'upcoming', tone: 'amber', icon: Clock3, title: `${q.upcoming.length} জনের শেষ তারিখ ২ দিনের মধ্যে`, text: 'আগেভাগে মনে করিয়ে দিন', act: 'পাঠান', go: () => openWhatsApp(q.upcoming) },
       !rec && !isFriday && { id: 'att', tone: 'brand', icon: CalendarCheck, title: 'আজকের হাজিরা নেওয়া হয়নি', text: `${active.length} জন শিক্ষার্থী`, act: 'নিন', go: () => setActiveTab('attendance') },
-      absentToday > 0 && { id: 'absent', tone: 'red', icon: UserX, title: `আজ ${absentToday} জন অনুপস্থিত`, text: 'অভিভাবককে জানান', act: 'জানান', go: onAbsent },
+      pendingCount > 0 && {
+        id: 'absent',
+        tone: 'red',
+        icon: UserX,
+        title: pendingCount === absentStudents.length ? `আজ ${absentStudents.length} জন অনুপস্থিত` : `আজ আরও ${pendingCount} জন অনুপস্থিত`,
+        text: 'অভিভাবককে জানান',
+        act: 'জানান',
+        go: onAbsent,
+      },
       missingFeeCount > 0 && {
         id: 'missing', tone: 'brand', icon: Wallet, title: `${monthBn(settings.currentMonth)} মাসের বেতন তৈরি হয়নি`, text: `${missingFeeCount} জন শিক্ষার্থী`, act: 'তৈরি করুন',
         go: async () => toast(`${await generateMonthFees()} জনের বেতন তৈরি হয়েছে`),
@@ -65,7 +95,7 @@ export function TodoCard({ onAbsent }) {
       active.length > 0 && backupAge > 14 && { id: 'backup', tone: 'slate', icon: HardDriveDownload, title: backupAge === Infinity ? 'এখনো ব্যাকআপ নেওয়া হয়নি' : `${backupAge} দিন ধরে ব্যাকআপ নেওয়া হয়নি`, text: 'সব তথ্যের একটা কপি নামিয়ে রাখুন', act: 'নামান', go: () => setActiveTab('settings') },
       noPhone > 0 && { id: 'phone', tone: 'slate', icon: PhoneOff, title: `${noPhone} জনের অভিভাবকের ফোন নম্বর নেই`, text: 'রিমাইন্ডার পাঠাতে নম্বর লাগবে', act: 'দেখুন', go: () => setActiveTab('students') },
     ].filter(Boolean);
-  }, [students, fees, fines, examFees, attendance, payments, closings, leaves, classId, openDayClose, settings.currentMonth, q, missingFeeCount, generateMonthFees, setActiveTab, getStudentAttendanceStats, openWhatsApp, onAbsent, toast]);
+  }, [students, fees, fines, examFees, attendance, payments, closings, leaves, classId, openDayClose, settings.currentMonth, q, missingFeeCount, generateMonthFees, setActiveTab, getStudentAttendanceStats, openWhatsApp, onAbsent, toast, waTick]);
 
   return (
     <div className="mt-5">

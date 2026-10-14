@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Bell, Search, UserPlus, CalendarCheck, TriangleAlert, ChartColumn, ArrowRight, ReceiptText, Users, Wallet,
-  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, CreditCard, Phone,
+  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, CreditCard, Phone, Check,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
@@ -16,12 +16,23 @@ import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, f
 export const AdminDashboard = () => {
   const {
     students, totalStudentsCount, activeStudentsCount, totalDueAcrossAll,
-    attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, profile,
+    attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, profile, classId,
   } = useApp();
   const { openWhatsApp, openReceipt, openStudentForm, openDayClose } = useUI();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
+
+  const [waTick, setWaTick] = useState(0);
+  useEffect(() => {
+    const handleUpdate = () => setWaTick((t) => t + 1);
+    window.addEventListener('absent_wa_sent_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('absent_wa_sent_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const today = todayISO();
   const dayOf = (p) => (p.paymentDate ? String(p.paymentDate).slice(0, 10) : '');
@@ -45,6 +56,17 @@ export const AdminDashboard = () => {
     if (!todayRecord) return [];
     return students.filter((s) => todayRecord[s.id] === 'Absent' && s.status !== 'inactive');
   }, [students, todayRecord]);
+
+  const isAbsentMsgDoneToday = useMemo(() => {
+    if (!absentStudentsToday.length) return false;
+    let sentSet = new Set();
+    try {
+      const stored = localStorage.getItem(`absent_wa_sent_${classId || 'default'}_${today}`);
+      if (stored) sentSet = new Set(JSON.parse(stored));
+    } catch {}
+    const reachable = absentStudentsToday.filter((s) => s.guardianPhone);
+    return reachable.length === 0 || reachable.every((s) => sentSet.has(s.id));
+  }, [absentStudentsToday, classId, today, waTick]);
 
   const monthFees = fees.filter((f) => f.month === settings.currentMonth && f.year === settings.currentYear);
   const overdueStudents = students.filter((s) => {
@@ -216,12 +238,14 @@ export const AdminDashboard = () => {
                 <Button
                   block
                   size="sm"
-                  variant="soft-danger"
-                  icon={WhatsAppIcon}
+                  variant={isAbsentMsgDoneToday ? 'soft-success' : 'soft-danger'}
+                  icon={isAbsentMsgDoneToday ? Check : WhatsAppIcon}
                   className="h-auto min-h-10 py-2.5 px-3 whitespace-normal text-center leading-snug"
                   onClick={() => setAbsentSheetOpen(true)}
                 >
-                  অনুপস্থিত {counts.Absent} জনকে WhatsApp নোটিফিকেশন পাঠান
+                  {isAbsentMsgDoneToday
+                    ? 'মেসেজ পাঠানো সম্পন্ন'
+                    : `অনুপস্থিত ${counts.Absent} জনকে WhatsApp নোটিফিকেশন পাঠান`}
                 </Button>
               </div>
             )}
@@ -365,7 +389,8 @@ function SearchSheet({ open, onClose }) {
           s.name.toLowerCase().includes(t) ||
           (s.nameEn || '').toLowerCase().includes(t) ||
           (s.studentId || '').toLowerCase().includes(t) ||
-          (s.guardianPhone || '').includes(t),
+          (s.guardianPhone || '').includes(t) ||
+          (s.studentPhone || '').includes(t),
       )
       .slice(0, 30);
   }, [q, students]);
@@ -400,7 +425,7 @@ function SearchSheet({ open, onClose }) {
                     {s.name}
                   </p>
                   <p className="mt-0.5 truncate text-[12.5px] text-slate-500">
-                    {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ') || 'তথ্য নেই'}
+                    {[studentTags(s), s.guardianPhone || s.studentPhone].filter(Boolean).join(' · ') || 'তথ্য নেই'}
                   </p>
                 </div>
 
@@ -414,57 +439,62 @@ function SearchSheet({ open, onClose }) {
               </div>
 
               {/* Bottom action bar */}
-              <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                    setTimeout(() => openPayment(s), 80);
-                  }}
-                  className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
-                >
-                  <CreditCard className="h-4 w-4" /> টাকা আদায়
-                </button>
+              {(() => {
+                const phone = s.guardianPhone || s.studentPhone;
+                return (
+                  <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                        setTimeout(() => openPayment(s), 80);
+                      }}
+                      className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
+                    >
+                      <CreditCard className="h-4 w-4" /> টাকা আদায়
+                    </button>
 
-                <a
-                  href={s.guardianPhone ? `tel:${s.guardianPhone}` : undefined}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!s.guardianPhone) {
-                      e.preventDefault();
-                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
-                    }
-                  }}
-                  title="কল করুন"
-                  className={cx(
-                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
-                    s.guardianPhone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
-                  )}
-                >
-                  <Phone className="h-[18px] w-[18px]" />
-                </a>
+                    <a
+                      href={phone ? `tel:${phone}` : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!phone) {
+                          e.preventDefault();
+                          toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                        }
+                      }}
+                      title={s.guardianPhone ? 'অভিভাবককে কল করুন' : 'শিক্ষার্থীকে কল করুন'}
+                      className={cx(
+                        'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                        phone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
+                      )}
+                    >
+                      <Phone className="h-[18px] w-[18px]" />
+                    </a>
 
-                <a
-                  href={s.guardianPhone ? waLink(s.guardianPhone) : undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!s.guardianPhone) {
-                      e.preventDefault();
-                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
-                    }
-                  }}
-                  title="WhatsApp"
-                  className={cx(
-                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
-                    s.guardianPhone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
-                  )}
-                >
-                  <WhatsAppIcon className="h-[18px] w-[18px]" />
-                </a>
-              </div>
+                    <a
+                      href={phone ? waLink(phone) : undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!phone) {
+                          e.preventDefault();
+                          toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                        }
+                      }}
+                      title="WhatsApp"
+                      className={cx(
+                        'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                        phone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
+                      )}
+                    >
+                      <WhatsAppIcon className="h-[18px] w-[18px]" />
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}

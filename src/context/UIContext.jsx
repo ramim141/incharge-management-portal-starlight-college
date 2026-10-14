@@ -59,8 +59,8 @@ export function UIProvider({ children }) {
       closeDayClose: () => setDayClose(null),
       openWhatsApp: (list) => {
         const all = (Array.isArray(list) ? list : [list]).filter(Boolean);
-        const ready = all.filter((s) => s.guardianPhone);
-        if (ready.length === 0) return toast('অভিভাবকের ফোন নম্বর নেই', 'error');
+        const ready = all.filter((s) => s.guardianPhone || s.studentPhone);
+        if (ready.length === 0) return toast('কোনো ফোন নম্বর নেই', 'error');
         if (ready.length < all.length) toast(`${all.length - ready.length} জনের ফোন নম্বর নেই, তাদের বাদ দেওয়া হয়েছে`, 'info');
         setWhatsapp(ready);
       },
