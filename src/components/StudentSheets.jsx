@@ -3,7 +3,7 @@ import {
   Phone, Pencil, Wallet, Trash2, UserRound, MapPin, CalendarDays, KeyRound, Hash, Users, Eye, EyeOff, ReceiptText,
   ChevronRight, RefreshCw, Undo2, Copy,
 } from 'lucide-react';
-import { useApp, studentIdFor } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { StudentHistory } from './StudentHistory';
 import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
@@ -116,12 +116,52 @@ function StudentDetail({ student: s }) {
     }
   };
 
+  const [contactModal, setContactModal] = useState(null); // 'call' | 'whatsapp' | null
+  const hasGuardian = Boolean(s.guardianPhone);
+  const hasStudent = Boolean(s.studentPhone);
+
+  const handleCall = () => {
+    if (hasGuardian && hasStudent) {
+      setContactModal('call');
+    } else if (hasGuardian) {
+      window.location.href = `tel:${s.guardianPhone}`;
+    } else if (hasStudent) {
+      window.location.href = `tel:${s.studentPhone}`;
+    } else {
+      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+    }
+  };
+
+  const handleWhatsApp = () => {
+    if (!hasGuardian && !hasStudent) {
+      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+      return;
+    }
+    if (due > 0) {
+      openWhatsApp([s]);
+      return;
+    }
+    if (hasGuardian && hasStudent) {
+      setContactModal('whatsapp');
+    } else if (hasGuardian) {
+      window.open(waLink(s.guardianPhone), '_blank');
+    } else {
+      window.open(waLink(s.studentPhone), '_blank');
+    }
+  };
+
   const actions = [
-    { label: 'কল', icon: Phone, href: `tel:${s.guardianPhone}`, cls: 'bg-sky-50 text-sky-600' },
+    {
+      label: 'কল',
+      icon: Phone,
+      href: hasGuardian && !hasStudent ? `tel:${s.guardianPhone}` : !hasGuardian && hasStudent ? `tel:${s.studentPhone}` : undefined,
+      onClick: (hasGuardian && hasStudent) || (!hasGuardian && !hasStudent) ? handleCall : undefined,
+      cls: 'bg-sky-50 text-sky-600',
+    },
     {
       label: 'WhatsApp',
       icon: WhatsAppIcon,
-      onClick: () => (due > 0 ? openWhatsApp([s]) : window.open(waLink(s.guardianPhone), '_blank')),
+      onClick: handleWhatsApp,
       cls: 'bg-emerald-50 text-emerald-600',
     },
     { label: 'আদায়', icon: Wallet, onClick: () => openPayment(s), cls: 'bg-brand-50 text-brand-600' },
@@ -225,7 +265,7 @@ function StudentDetail({ student: s }) {
           <section>
             <p className="mb-2 text-[13px] font-bold tracking-wide text-slate-400">মাসিক বেতন</p>
             {feeStartMonth && (
-              <p className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-[12.5px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে</p>
+              <p className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-[12.5px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)} ভর্তি শুরুর মাস — প্রথম মাসের বেতন ভর্তির সময় নেওয়া হয়েছে (বেতন হয়ে গেছে)</p>
             )}
             {sFees.length === 0 && <Empty text={feeStartMonth ? `${feeStartLabel(feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'} />}
             <div className="space-y-2">
@@ -347,6 +387,7 @@ function StudentDetail({ student: s }) {
           <InfoCard title="পরিচয়">
             <InfoRow icon={Hash} label="স্টুডেন্ট আইডি" value={s.studentId} mono />
             <InfoRow icon={CalendarDays} label="ভর্তির তারিখ" value={fmtDate(s.admissionDate)} />
+            {s.studentPhone && <InfoRow icon={Phone} label="শিক্ষার্থীর নিজস্ব ফোন" value={s.studentPhone} mono />}
           </InfoCard>
           <InfoCard title="অভিভাবক">
             <InfoRow icon={UserRound} label="পিতার নাম" value={s.fatherName} />
@@ -380,21 +421,34 @@ function StudentDetail({ student: s }) {
                 নতুন পিন
               </Button>
             </div>
-            <div className="flex gap-2 py-3">
+            <div className="flex flex-wrap gap-2 py-3">
               {s.guardianPhone && (
                 <Button
                   as="a"
                   variant="soft-success"
                   size="sm"
-                  className="flex-1"
+                  className="flex-1 min-w-[130px]"
                   target="_blank"
                   rel="noopener noreferrer"
                   href={waLink(s.guardianPhone, portalShareMessage)}
                 >
-                  <WhatsAppIcon className="h-4 w-4" /> পিন ও লিংক পাঠান
+                  <WhatsAppIcon className="h-4 w-4" /> {s.studentPhone ? 'অভিভাবককে পাঠান' : 'পিন ও লিংক পাঠান'}
                 </Button>
               )}
-              <Button type="button" variant="secondary" size="sm" icon={Copy} className={s.guardianPhone ? '' : 'flex-1'} onClick={copyPortalInfo}>
+              {s.studentPhone && (
+                <Button
+                  as="a"
+                  variant="soft-success"
+                  size="sm"
+                  className="flex-1 min-w-[130px]"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  href={waLink(s.studentPhone, portalShareMessage)}
+                >
+                  <WhatsAppIcon className="h-4 w-4" /> শিক্ষার্থীকে পাঠান
+                </Button>
+              )}
+              <Button type="button" variant="secondary" size="sm" icon={Copy} className={(!s.guardianPhone && !s.studentPhone) ? 'flex-1' : ''} onClick={copyPortalInfo}>
                 কপি
               </Button>
             </div>
@@ -407,6 +461,59 @@ function StudentDetail({ student: s }) {
       )}
       <Sheet open={waiving} onClose={() => setWaiving(false)} title="জরিমানা মওকুফ" subtitle={`${s.name} · রোল ${s.roll}`}>
         {waiving && <WaiveForm student={s} due={fineSummary.due} onDone={() => setWaiving(false)} />}
+      </Sheet>
+      <Sheet
+        open={!!contactModal}
+        onClose={() => setContactModal(null)}
+        title={contactModal === 'call' ? 'কাকে কল করবেন?' : 'WhatsApp-এ কাকে মেসেজ পাঠাবেন?'}
+        subtitle={`${s.name} · রোল ${s.roll}`}
+      >
+        <div className="space-y-2.5 pt-2">
+          {s.guardianPhone && (
+            <a
+              href={contactModal === 'call' ? `tel:${s.guardianPhone}` : waLink(s.guardianPhone)}
+              target={contactModal === 'call' ? undefined : '_blank'}
+              rel="noopener noreferrer"
+              onClick={() => setContactModal(null)}
+              className="press flex items-center justify-between rounded-2xl bg-sky-50/70 p-3.5 ring-1 ring-sky-100 hover:bg-sky-100/70 transition"
+            >
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-100 text-sky-700 font-bold text-[18px]">
+                  👨‍👦
+                </span>
+                <div>
+                  <p className="text-[14.5px] font-bold text-sky-950">অভিভাবক</p>
+                  <p className="tabular text-[13px] text-sky-700">{s.guardianPhone}</p>
+                </div>
+              </div>
+              <span className="rounded-xl bg-white px-3 py-1.5 text-[12.5px] font-bold text-sky-700 shadow-sm">
+                {contactModal === 'call' ? 'কল দিন' : 'WhatsApp'}
+              </span>
+            </a>
+          )}
+          {s.studentPhone && (
+            <a
+              href={contactModal === 'call' ? `tel:${s.studentPhone}` : waLink(s.studentPhone)}
+              target={contactModal === 'call' ? undefined : '_blank'}
+              rel="noopener noreferrer"
+              onClick={() => setContactModal(null)}
+              className="press flex items-center justify-between rounded-2xl bg-emerald-50/70 p-3.5 ring-1 ring-emerald-100 hover:bg-emerald-100/70 transition"
+            >
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-100 text-emerald-700 font-bold text-[18px]">
+                  🎓
+                </span>
+                <div>
+                  <p className="text-[14.5px] font-bold text-emerald-950">শিক্ষার্থী (নিজস্ব)</p>
+                  <p className="tabular text-[13px] text-emerald-700">{s.studentPhone}</p>
+                </div>
+              </div>
+              <span className="rounded-xl bg-white px-3 py-1.5 text-[12.5px] font-bold text-emerald-700 shadow-sm">
+                {contactModal === 'call' ? 'কল দিন' : 'WhatsApp'}
+              </span>
+            </a>
+          )}
+        </div>
       </Sheet>
       {editingFee && (
         <FeeEditSheet
@@ -515,7 +622,7 @@ function WaiveForm({ student, due, onDone }) {
       </Field>
       <div className="-mt-2 flex gap-2">
         {[Math.round(due / 2), due].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
-          <button key={v} type="button" onClick={() => setAmount(String(v))} className={cx('press flex-1 rounded-xl py-2 text-[13.5px] font-bold', n === v ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}>
+          <button key={v} type="button" onClick={() => setAmount(String(v))} className={cx('press flex-1 rounded-xl py-2 text-[13.5px] font-bold transition', n === v ? 'bg-brand-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 border border-slate-200/60')}>
             {v === due ? `সব (${taka(v)})` : `অর্ধেক (${taka(v)})`}
           </button>
         ))}
@@ -675,11 +782,12 @@ export function StudentFormSheet() {
 }
 
 function StudentForm({ editing }) {
-  const { students, settings, addStudent, updateStudent, classId, isBeforeStart, feeStartMonth } = useApp();
+  const { students, settings, addStudent, updateStudent, isBeforeStart, feeStartMonth } = useApp();
   const { closeStudentForm, toast, openStudent } = useUI();
   const departments = settings.departments || [];
   const sections = settings.sections || [];
 
+  const [tab, setTab] = useState('basic'); // 'basic' | 'fees' | 'guardian' | 'all'
   const [form, setForm] = useState(() => {
     if (editing) {
       return {
@@ -689,6 +797,7 @@ function StudentForm({ editing }) {
         transport: !!editing.transport,
         transportFee: editing.transportFee ?? '',
         absentFine: editing.absentFine ?? '',
+        studentPhone: editing.studentPhone ?? '',
       };
     }
     const nextRoll = students.length ? Math.max(...students.map((s) => Number(s.roll) || 100)) + 1 : 101;
@@ -702,6 +811,7 @@ function StudentForm({ editing }) {
       fatherName: '',
       motherName: '',
       guardianPhone: '',
+      studentPhone: '',
       address: '',
       admissionDate: todayISO(),
       monthlyFee: settings.defaultMonthlyFee,
@@ -723,18 +833,37 @@ function StudentForm({ editing }) {
     else if (students.some((s) => Number(s.roll) === Number(form.roll) && s.id !== editing?.id)) err.roll = 'এই রোল আগে থেকেই আছে';
     if (form.guardianPhone && !/^01\d{9}$/.test(String(form.guardianPhone).replace(/[^0-9]/g, '').replace(/^88/, '')))
       err.guardianPhone = '১১ সংখ্যার মোবাইল নম্বর দিন (01XXXXXXXXX)';
+    if (form.studentPhone && !/^01\d{9}$/.test(String(form.studentPhone).replace(/[^0-9]/g, '').replace(/^88/, '')))
+      err.studentPhone = '১১ সংখ্যার মোবাইল নম্বর দিন (01XXXXXXXXX)';
     if (!/^\d{4,6}$/.test(String(form.pin))) err.pin = '৪–৬ সংখ্যার পিন দিন';
     if (form.absentFine !== '' && form.absentFine != null && !(Number(form.absentFine) >= 0)) err.absentFine = 'সঠিক পরিমাণ দিন';
     if (form.transport && !(Number(form.transportFee) > 0)) err.transportFee = 'পরিবহন ফি দিন';
     setErrors(err);
-    if (Object.keys(err).length) return;
+    if (Object.keys(err).length) {
+      if (err.name || err.roll) setTab('basic');
+      else if (err.pin || err.transportFee || err.absentFine) setTab('fees');
+      else if (err.guardianPhone || err.studentPhone) setTab('guardian');
+      return;
+    }
 
     const { avatar: _photo, ...rest } = form;
     const absentFine = rest.absentFine === '' || rest.absentFine == null ? '' : Number(rest.absentFine);
     const tuitionFee = form.monthlyFee === '' || form.monthlyFee == null ? Number(settings.defaultMonthlyFee) : Number(form.monthlyFee);
     const transportFee = form.transport ? Number(form.transportFee) : 0;
+    const guardianPhone = form.guardianPhone ? String(form.guardianPhone).replace(/[^0-9]/g, '').replace(/^88/, '') : '';
+    const studentPhone = form.studentPhone ? String(form.studentPhone).replace(/[^0-9]/g, '').replace(/^88/, '') : '';
     // Every fee row uses monthlyFee, so transport is simply part of the monthly total
-    const data = { ...rest, roll: Number(form.roll), tuitionFee, transport: !!form.transport, transportFee, monthlyFee: tuitionFee + transportFee, absentFine };
+    const data = {
+      ...rest,
+      guardianPhone,
+      studentPhone,
+      roll: Number(form.roll),
+      tuitionFee,
+      transport: !!form.transport,
+      transportFee,
+      monthlyFee: tuitionFee + transportFee,
+      absentFine,
+    };
     if (editing?.avatar) data.avatar = '';
     if (editing) {
       await updateStudent(editing.id, data);
@@ -748,113 +877,137 @@ function StudentForm({ editing }) {
     }
   };
 
+  const TAB_OPTIONS = [
+    { value: 'basic', label: 'মূল তথ্য' },
+    { value: 'fees', label: 'ফি ও পোর্টাল' },
+    { value: 'guardian', label: 'অভিভাবক ও ফোন' },
+    { value: 'all', label: 'সব তথ্য' },
+  ];
+
   return (
-    <div className="space-y-4 pt-1">
-      <div className="flex items-center gap-4 rounded-3xl bg-slate-50 p-4">
-        <RollBadge roll={form.roll || '?'} seed={editing?.id || form.roll} size={64} rounded="rounded-2xl" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[16px] font-bold text-ink">{form.name.trim() || (editing ? editing.name : 'নতুন শিক্ষার্থী')}</p>
-          <p className="tabular mt-0.5 text-[12.5px] text-slate-500">
-            {form.roll ? `আইডি ${studentIdFor(classId, form.roll)}` : 'রোল দিন'}
-          </p>
-        </div>
-      </div>
+    <div className="space-y-3 pt-1">
 
-      <FormSection icon={UserRound} title="মূল তথ্য">
-        <Field label="নাম (বাংলায়) *" error={errors.name}>
-          <Input value={form.name} onChange={set('name')} placeholder="যেমন মো: রহিম আহমেদ" />
-        </Field>
-        <Field label="Name (English)">
-          <Input value={form.nameEn || ''} onChange={set('nameEn')} placeholder="e.g. Md. Rahim Ahmed" autoCapitalize="words" />
-        </Field>
-        <Field label="রোল *" error={errors.roll} hint="স্টুডেন্ট আইডি রোল থেকে আপনাআপনি তৈরি হয়">
-          <Input type="number" inputMode="numeric" value={form.roll} onChange={set('roll')} />
-        </Field>
-        {departments.length > 0 && (
-          <Field label="বিভাগ">
-            <Pills value={form.group} onChange={set('group')} options={departments} />
-          </Field>
-        )}
-        {sections.length > 0 && (
-          <Field label="শাখা">
-            <Pills value={form.section} onChange={set('section')} options={sections} />
-          </Field>
-        )}
-        {settings.useGender !== false && (
-          <Field label="ছাত্র / ছাত্রী">
-            <Segmented value={form.gender} onChange={set('gender')} options={GENDERS.map((g) => ({ value: g.id, label: g.bn }))} />
-          </Field>
-        )}
-      </FormSection>
 
-      <FormSection icon={Wallet} title="ফি ও পোর্টাল">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="মাসিক বেতন (৳)">
-            <Input type="number" inputMode="numeric" value={form.monthlyFee} onChange={set('monthlyFee')} />
-          </Field>
-          <Field label="পোর্টাল পিন" error={errors.pin}>
-            <Input inputMode="numeric" maxLength={6} value={form.pin} onChange={set('pin')} className="tracking-[0.3em]" />
-          </Field>
-        </div>
-        <Field label="পরিবহন ব্যবহার করে?">
-          <Segmented
-            value={form.transport ? 'yes' : 'no'}
-            onChange={(v) => setForm((f) => ({ ...f, transport: v === 'yes' }))}
-            options={[
-              { value: 'no', label: 'না' },
-              { value: 'yes', label: 'হ্যাঁ' },
-            ]}
-          />
-        </Field>
-        {form.transport && (
-          <>
-            <Field label="পরিবহন ফি (৳/মাস)" error={errors.transportFee}>
-              <Input type="number" inputMode="numeric" min={0} value={form.transportFee} onChange={set('transportFee')} placeholder="যেমন 500" />
+      {/* Sub-tabs to jump directly to any section without long scrolling */}
+      <Segmented value={tab} onChange={setTab} options={TAB_OPTIONS} />
+
+      {/* Section 1: Basic Info */}
+      {(tab === 'basic' || tab === 'all') && (
+        <FormSection icon={UserRound} title="মূল তথ্য" compact={tab !== 'all'}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="নাম (বাংলায়) *" error={errors.name}>
+              <Input value={form.name} onChange={set('name')} placeholder="যেমন মো: রহিম আহমেদ" />
             </Field>
-            <div className="tabular space-y-1 rounded-2xl bg-brand-50 px-4 py-3 text-[13.5px] text-brand-900">
-              <div className="flex justify-between"><span>মাসিক বেতন</span><b>{taka(Number(form.monthlyFee) || 0)}</b></div>
-              <div className="flex justify-between"><span>পরিবহন</span><b>{taka(Number(form.transportFee) || 0)}</b></div>
-              <div className="flex justify-between border-t border-brand-200/70 pt-1 text-[14.5px]"><span>প্রতি মাসে একসাথে আদায়</span><b>{taka((Number(form.monthlyFee) || 0) + (Number(form.transportFee) || 0))}</b></div>
+            <Field label="Name (English)">
+              <Input value={form.nameEn || ''} onChange={set('nameEn')} placeholder="e.g. Md. Rahim Ahmed" autoCapitalize="words" />
+            </Field>
+            <Field label="রোল *" error={errors.roll}>
+              <Input type="number" inputMode="numeric" value={form.roll} onChange={set('roll')} />
+            </Field>
+            {settings.useGender !== false && (
+              <Field label="ছাত্র / ছাত্রী">
+                <Segmented value={form.gender} onChange={set('gender')} options={GENDERS.map((g) => ({ value: g.id, label: g.bn }))} />
+              </Field>
+            )}
+            {departments.length > 0 && (
+              <Field label="বিভাগ" className={sections.length === 0 ? 'sm:col-span-2' : ''}>
+                <Pills value={form.group} onChange={set('group')} options={departments} />
+              </Field>
+            )}
+            {sections.length > 0 && (
+              <Field label="শাখা">
+                <Pills value={form.section} onChange={set('section')} options={sections} />
+              </Field>
+            )}
+          </div>
+        </FormSection>
+      )}
+
+      {/* Section 2: Fees & Portal */}
+      {(tab === 'fees' || tab === 'all') && (
+        <FormSection icon={Wallet} title="ফি ও পোর্টাল" compact={tab !== 'all'}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="মাসিক বেতন (৳)">
+                <Input type="number" inputMode="numeric" value={form.monthlyFee} onChange={set('monthlyFee')} />
+              </Field>
+              <Field label="পোর্টাল পিন" error={errors.pin}>
+                <Input inputMode="numeric" maxLength={6} value={form.pin} onChange={set('pin')} className="tracking-[0.3em]" />
+              </Field>
+              <Field label="পরিবহন ব্যবহার করে?">
+                <Segmented
+                  value={form.transport ? 'yes' : 'no'}
+                  onChange={(v) => setForm((f) => ({ ...f, transport: v === 'yes' }))}
+                  options={[
+                    { value: 'no', label: 'না' },
+                    { value: 'yes', label: 'হ্যাঁ' },
+                  ]}
+                />
+              </Field>
+              {form.transport ? (
+                <Field label="পরিবহন ফি (৳/মাস)" error={errors.transportFee}>
+                  <Input type="number" inputMode="numeric" min={0} value={form.transportFee} onChange={set('transportFee')} placeholder="যেমন 500" />
+                </Field>
+              ) : (
+                <Field label="ভর্তির তারিখ">
+                  <Input type="date" value={form.admissionDate || ''} onChange={set('admissionDate')} />
+                </Field>
+              )}
+              {form.transport && (
+                <Field label="ভর্তির তারিখ" className="sm:col-span-2">
+                  <Input type="date" value={form.admissionDate || ''} onChange={set('admissionDate')} />
+                </Field>
+              )}
+              <Field
+                label="অনুপস্থিতির জরিমানা (৳/দিন)"
+                error={errors.absentFine}
+                hint={`ডিফল্ট ৳${settings.absentFine} · ০ দিলে জরিমানা নেই`}
+              >
+                <Input type="number" inputMode="numeric" min={0} value={form.absentFine ?? ''} onChange={set('absentFine')} placeholder={String(settings.absentFine)} />
+              </Field>
+              <Field label="অবস্থা">
+                <Segmented
+                  value={form.status}
+                  onChange={set('status')}
+                  options={[
+                    { value: 'active', label: 'সক্রিয়' },
+                    { value: 'inactive', label: 'নিষ্ক্রিয়' },
+                  ]}
+                />
+              </Field>
             </div>
-          </>
-        )}
-        <Field
-          label="অনুপস্থিতির জরিমানা (৳/দিন)"
-          error={errors.absentFine}
-          hint={`খালি রাখলে ক্লাসের নিয়ম (৳${settings.absentFine}) · 0 দিলে এই শিক্ষার্থীর জরিমানা হবে না`}
-        >
-          <Input type="number" inputMode="numeric" min={0} value={form.absentFine ?? ''} onChange={set('absentFine')} placeholder={String(settings.absentFine)} />
-        </Field>
-        <Field label="ভর্তির তারিখ">
-          <Input type="date" value={form.admissionDate || ''} onChange={set('admissionDate')} />
-        </Field>
-        <Field label="অবস্থা">
-          <Segmented
-            value={form.status}
-            onChange={set('status')}
-            options={[
-              { value: 'active', label: 'সক্রিয়' },
-              { value: 'inactive', label: 'নিষ্ক্রিয়' },
-            ]}
-          />
-        </Field>
-      </FormSection>
+            {form.transport && (
+              <div className="tabular flex justify-between rounded-xl bg-brand-50 px-3.5 py-2 text-[13px] text-brand-900">
+                <span>মাসিক মোট প্রদেয় (বেতন + পরিবহন):</span>
+                <b>{taka((Number(form.monthlyFee) || 0) + (Number(form.transportFee) || 0))}</b>
+              </div>
+            )}
+          </div>
+        </FormSection>
+      )}
 
-      <FormSection icon={Users} title="অভিভাবক">
-        <Field label="অভিভাবকের মোবাইল (WhatsApp)" error={errors.guardianPhone}>
-          <Input type="tel" inputMode="tel" value={form.guardianPhone} onChange={set('guardianPhone')} placeholder="01XXXXXXXXX" />
-        </Field>
-        <Field label="পিতার নাম">
-          <Input value={form.fatherName} onChange={set('fatherName')} />
-        </Field>
-        <Field label="মাতার নাম">
-          <Input value={form.motherName} onChange={set('motherName')} />
-        </Field>
-        <Field label="ঠিকানা">
-          <Input value={form.address} onChange={set('address')} placeholder="যেমন ধানমন্ডি, ঢাকা" />
-        </Field>
-      </FormSection>
-
+      {/* Section 3: Guardian & Contact */}
+      {(tab === 'guardian' || tab === 'all') && (
+        <FormSection icon={Users} title="অভিভাবক ও যোগাযোগ" compact={tab !== 'all'}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="অভিভাবকের মোবাইল (WhatsApp)" error={errors.guardianPhone}>
+              <Input type="tel" inputMode="tel" value={form.guardianPhone} onChange={set('guardianPhone')} placeholder="01XXXXXXXXX" />
+            </Field>
+            <Field label="শিক্ষার্থীর নিজস্ব মোবাইল (WhatsApp)" error={errors.studentPhone} hint="অভিভাবকের হোয়াটসঅ্যাপ না থাকলে মেসেজ পাঠানোর জন্য">
+              <Input type="tel" inputMode="tel" value={form.studentPhone} onChange={set('studentPhone')} placeholder="01XXXXXXXXX" />
+            </Field>
+            <Field label="পিতার নাম">
+              <Input value={form.fatherName} onChange={set('fatherName')} />
+            </Field>
+            <Field label="মাতার নাম">
+              <Input value={form.motherName} onChange={set('motherName')} />
+            </Field>
+            <Field label="ঠিকানা" className="sm:col-span-2">
+              <Input value={form.address} onChange={set('address')} placeholder="যেমন ধানমন্ডি, ঢাকা" />
+            </Field>
+          </div>
+        </FormSection>
+      )}
 
       {!editing && (
         <PaidAtAdmission
@@ -866,7 +1019,7 @@ function StudentForm({ editing }) {
         />
       )}
 
-      <div className="sticky bottom-0 -mx-5 border-t border-slate-100 bg-white/95 px-5 pb-1 pt-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 sm:-mx-5 border-t border-slate-100 bg-white/95 px-4 sm:px-5 pb-2 pt-3 backdrop-blur">
         <Button size="lg" block onClick={save}>
           {editing ? 'পরিবর্তন সংরক্ষণ' : 'শিক্ষার্থী যুক্ত করুন'}
         </Button>
@@ -883,7 +1036,12 @@ const Pills = ({ value, onChange, options }) => (
         key={o.id}
         type="button"
         onClick={() => onChange(o.id)}
-        className={cx('press h-10 rounded-xl px-4 text-[14.5px] font-semibold', value === o.id ? 'bg-ink text-white' : 'bg-slate-100 text-slate-600')}
+        className={cx(
+          'press h-9.5 rounded-xl px-3.5 text-[13.5px] font-semibold transition',
+          value === o.id
+            ? 'bg-brand-600 text-white shadow-xs font-bold'
+            : 'bg-white text-slate-700 border border-slate-200/90 shadow-xs hover:border-slate-300 hover:bg-slate-50',
+        )}
       >
         {o.bn}
       </button>
@@ -891,16 +1049,17 @@ const Pills = ({ value, onChange, options }) => (
   </div>
 );
 
-const FormSection = ({ icon: Icon, title, children }) => (
-  <section className="rounded-3xl bg-slate-50 p-4">
-    <div className="mb-4 flex items-center gap-2.5">
+const FormSection = ({ icon: Icon, title, compact, children }) => (
+  <section className={cx('rounded-2xl border border-slate-200/70 bg-slate-50/50 shadow-xs transition', compact ? 'p-3.5 sm:p-4' : 'p-4')}>
+    <div className="mb-3 flex items-center gap-2">
       {Icon && (
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-brand-50 text-brand-600">
-          <Icon className="h-4 w-4" />
+        <span className="grid h-6 w-6 place-items-center rounded-lg bg-brand-50 text-brand-600">
+          <Icon className="h-3.5 w-3.5" />
         </span>
       )}
-      <p className="text-[15px] font-bold text-ink">{title}</p>
+      <p className="text-[14px] font-bold text-ink">{title}</p>
     </div>
-    <div className="space-y-4">{children}</div>
+    <div>{children}</div>
   </section>
 );
+

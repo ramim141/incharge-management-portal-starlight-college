@@ -1,6 +1,6 @@
 // Bulk student import for the principal: a CSV file or rows pasted from Excel / Google Sheets.
 // Each row goes to the class named in its "class" column (or the class picked on screen).
-import { newStudentRecord, newFeeRow, buildClassSettings, markFeePaid, isBeforeFeeStart } from './classLogic';
+import { newStudentRecord, newFeeRow, buildClassSettings, markFeePaid, isBeforeFeeStart, isAdmissionMonth } from './classLogic';
 import { buildPortalSnapshot } from './portal';
 import { quickHash } from './hash';
 import { setClassLabels } from './format';
@@ -58,6 +58,18 @@ const HEADERS = {
   fatherName: ['father', 'fathername', 'fathersname', 'পিতা', 'পিতারনাম', 'বাবারনাম'],
   motherName: ['mother', 'mothername', 'mothersname', 'মাতা', 'মাতারনাম', 'মায়েরনাম'],
   guardianPhone: ['phone', 'mobile', 'guardianphone', 'guardianmobile', 'মোবাইল', 'ফোন', 'অভিভাবকেরমোবাইল', 'অভিভাবকেরফোন'],
+  studentPhone: [
+    'studentphone',
+    'studentmobile',
+    'ownphone',
+    'ownmobile',
+    'শিক্ষার্থীরমোবাইল',
+    'শিক্ষার্থীরফোন',
+    'ছাত্রফোন',
+    'ছাত্রীফোন',
+    'ছাত্রছাত্রীরফোন',
+    'নিজেরমোবাইল',
+  ],
   address: ['address', 'ঠিকানা'],
   monthlyFee: ['fee', 'monthlyfee', 'বেতন', 'মাসিকবেতন'],
   pin: ['pin', 'পিন'],
@@ -65,8 +77,8 @@ const HEADERS = {
 const FIELD_OF = Object.fromEntries(Object.entries(HEADERS).flatMap(([f, names]) => names.map((n) => [key(n), f])));
 
 export const TEMPLATE_CSV =
-  'class,roll,name,nameEn,department,section,gender,father,mother,phone,address,fee,pin\n' +
-  'XI-2026,101,মো: রহিম আহমেদ,Md. Rahim Ahmed,বিজ্ঞান,,ছাত্র,আব্দুল করিম,রহিমা বেগম,01712345678,ঢাকা,1000,\n';
+  'class,roll,name,nameEn,department,section,gender,father,mother,phone,studentPhone,address,fee,pin\n' +
+  'XI-2026,101,মো: রহিম আহমেদ,Md. Rahim Ahmed,বিজ্ঞান,,ছাত্র,আব্দুল করিম,রহিমা বেগম,01712345678,01812345678,ঢাকা,1000,\n';
 
 const GENDER = { male: 'Male', m: 'Male', boy: 'Male', ছাত্র: 'Male', পুরুষ: 'Male', female: 'Female', f: 'Female', girl: 'Female', ছাত্রী: 'Female', মহিলা: 'Female' };
 const DEPT_ALIASES = {
@@ -152,6 +164,11 @@ export function planImport(rows, { classes, existing, defaultClass }) {
     let phone = toEnDigits(rec.guardianPhone).replace(/[^0-9]/g, '');
     if (phone.startsWith('88')) phone = phone.slice(2);
     if (phone.length === 10 && phone.startsWith('1')) phone = `0${phone}`;
+
+    let studentPhone = toEnDigits(rec.studentPhone).replace(/[^0-9]/g, '');
+    if (studentPhone.startsWith('88')) studentPhone = studentPhone.slice(2);
+    if (studentPhone.length === 10 && studentPhone.startsWith('1')) studentPhone = `0${studentPhone}`;
+
     const pin = toEnDigits(rec.pin).replace(/\D/g, '');
     if (rec.pin && !/^\d{4,6}$/.test(pin)) return errors.push({ row: line, msg: `পিন "${rec.pin}" ৪–৬ সংখ্যার হতে হবে` });
 
@@ -172,6 +189,7 @@ export function planImport(rows, { classes, existing, defaultClass }) {
         fatherName: rec.fatherName || '',
         motherName: rec.motherName || '',
         guardianPhone: phone,
+        studentPhone,
         address: rec.address || '',
         monthlyFee: Number(toEnDigits(rec.monthlyFee)) || '',
         pin,
@@ -201,8 +219,9 @@ export function buildImportOps(plan, { institution, month, year, paidAtAdmission
       const student = newStudentRecord(input, g.cls.id, settings);
       // Before the class's fee start month: the admission month was paid with admission, no fee row.
       // Otherwise the admission-month fee is saved as paid when collected together with admission.
+      const isStart = isAdmissionMonth(settings.currentMonth, settings.currentYear, settings.feeStartMonth);
       const beforeStart = isBeforeFeeStart(settings.currentMonth, settings.currentYear, settings.feeStartMonth);
-      const fee = beforeStart ? null : paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
+      const fee = beforeStart ? null : isStart || paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
       const snap = buildPortalSnapshot({
         student,
         fees: fee ? [fee] : [],
@@ -218,7 +237,7 @@ export function buildImportOps(plan, { institution, month, year, paidAtAdmission
       ops.push({ type: 'set', path: ['classes', g.cls.id, 'students', student.id], data: { ...student, portalHash: hash } });
       if (fee) ops.push({ type: 'set', path: ['classes', g.cls.id, 'fees', fee.id], data: fee });
       ops.push({ type: 'set', path: ['portal', student.portalKey], data: { ...snap, classId: g.cls.id, hash, updatedAt: new Date().toISOString() } });
-      created.push({ classCode: g.cls.id, className: g.cls.name, roll: student.roll, name: student.name, pin: student.pin, phone: student.guardianPhone });
+      created.push({ classCode: g.cls.id, className: g.cls.name, roll: student.roll, name: student.name, pin: student.pin, phone: student.guardianPhone, studentPhone: student.studentPhone });
     });
   });
   return { ops, created };

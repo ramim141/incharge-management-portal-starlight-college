@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { AppContext, useApp, normalizeFine, studentIdFor } from '../context/AppContext';
 import { CLASS_INDEX_PATH } from '../lib/classIndex';
-import { feeStartLabel } from '../lib/classLogic';
+import { feeStartLabel, ADMISSION_NOTE } from '../lib/classLogic';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
@@ -457,6 +457,7 @@ function StudentProfile({ student: s, snap, onExit }) {
                   <InfoRow icon={UserRound} label="পিতার নাম" value={s.fatherName} />
                   <InfoRow icon={Users} label="মাতার নাম" value={s.motherName} />
                   <InfoRow icon={Phone} label="অভিভাবকের ফোন" value={s.guardianPhone} mono />
+                  {s.studentPhone && <InfoRow icon={Phone} label="শিক্ষার্থীর ফোন" value={s.studentPhone} mono />}
                   <InfoRow icon={MapPin} label="ঠিকানা" value={s.address} />
                 </div>
               </Card>
@@ -503,7 +504,7 @@ function StudentProfile({ student: s, snap, onExit }) {
                             </p>
                           </div>
                           {paid ? (
-                            <Badge tone="green">{f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
+                            <Badge tone="green">{f.atAdmission || f.note === ADMISSION_NOTE ? 'বেতন হয়ে গেছে (ভর্তির সময়)' : f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
                           ) : (
                             <div className="text-right">
                               <Badge tone="red">বাকি</Badge>

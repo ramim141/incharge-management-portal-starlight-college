@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCheck, Save, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, CheckCheck, Save, X } from 'lucide-react';
 import { Card, RollBadge, Button, Progress, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
 import { studentTags, ATT_STATUS, ATT_ORDER, fmtDate, taka } from '../lib/format';
@@ -13,7 +13,7 @@ const PICK = {
 const NUM = { Present: 'text-emerald-600', Absent: 'text-rose-600', Late: 'text-amber-500', Leave: 'text-sky-600' };
 
 // Full-screen "one student at a time" roll call. step === list.length is the summary page.
-export function RollCall({ list, step, records, getStats, fineFor, counts, rate, dirty, date, onPick, onStep, onSave, onWhatsApp, onClose }) {
+export function RollCall({ list, step, records, getStats, fineFor, counts, rate, dirty, date, onPick, onStep, onSave, onWhatsApp, isAbsentMsgDone, onClose }) {
   const [flash, setFlash] = useState(null);
   const total = list.length;
   const done = step >= total;
@@ -125,8 +125,14 @@ export function RollCall({ list, step, records, getStats, fineFor, counts, rate,
                 </Button>
               )}
               {absentees.length > 0 && (
-                <Button size="lg" block variant="soft-danger" icon={WhatsAppIcon} onClick={onWhatsApp}>
-                  অভিভাবকদের WhatsApp পাঠান
+                <Button
+                  size="lg"
+                  block
+                  variant={isAbsentMsgDone ? 'soft-success' : 'soft-danger'}
+                  icon={isAbsentMsgDone ? Check : WhatsAppIcon}
+                  onClick={onWhatsApp}
+                >
+                  {isAbsentMsgDone ? 'মেসেজ পাঠানো সম্পন্ন' : 'অভিভাবকদের WhatsApp পাঠান'}
                 </Button>
               )}
               <div className="flex gap-2.5">

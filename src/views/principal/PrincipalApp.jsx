@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CLASS_INDEX_PATH, buildClassIndex } from '../../lib/classIndex';
 import {
-  House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, Mail, KeyRound,
+  House, School, Users, Settings, Plus, ChevronRight, TriangleAlert, CalendarX, UserPlus, Copy, Check, CheckCheck, Mail, KeyRound,
   Trash2, Pencil, LogOut, UserRound, Building2, Database, RotateCcw, Phone, ArrowRight, Power, Eye, IdCard, Upload,
   Search, X, Wallet,
 } from 'lucide-react';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUI } from '../../context/UIContext';
 import { backend, isLocal, errorText } from '../../backend';
 import { DEFAULT_CLASS_SETTINGS } from '../../lib/defaults';
+import { addMonthsPeriod, feeStartLabel } from '../../lib/classLogic';
 import {
   STAFF_COUNTER_PATH, DEFAULT_STAFF_PREFIX, loginIdPath, staffEmail, isStaffEmail, formatStaffId, nextStaffSerial, generateStaffPassword,
 } from '../../lib/staffLogin';
@@ -18,7 +19,7 @@ import { useBackHandler } from '../../lib/backstack';
 const StudentImport = React.lazy(() => import('./StudentImport').then((m) => ({ default: m.StudentImport })));
 import { taka, monthBn, EN_MONTHS, waLink, fmtDate, todayISO } from '../../lib/format';
 import {
-  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, FeeStartSelect, cx, CONTAINER, GUTTER,
+  PageHeader, Card, Avatar, Badge, Button, IconButton, Progress, Sheet, Field, Input, EmptyState, SelectPill, FeeMonthSelect, cx, CONTAINER, GUTTER,
   CARD_GRID,
 } from '../../components/ui';
 import { WhatsAppIcon } from '../../components/ReceiptSheet';
@@ -683,12 +684,58 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
   const year = new Date().getFullYear();
   const [f, setF] = useState(() =>
     cls
-      ? { code: cls.id, name: cls.name, section: cls.section || '', session: cls.session || '', inchargeUid: cls.inchargeUid || '', ...DEFAULT_CLASS_SETTINGS, ...(cls.settings || {}) }
-      : { code: '', name: '', section: '', session: `${year}-${String(year + 1).slice(2)}`, inchargeUid: '', ...DEFAULT_CLASS_SETTINGS },
+      ? {
+          code: cls.id,
+          name: cls.name,
+          section: cls.section || '',
+          session: cls.session || '',
+          inchargeUid: cls.inchargeUid || '',
+          ...DEFAULT_CLASS_SETTINGS,
+          ...(cls.settings || {}),
+          feeStartMonth: cls.settings?.feeStartMonth || '',
+          feeEndMonth: cls.settings?.feeEndMonth || '',
+        }
+      : {
+          code: '',
+          name: '',
+          section: '',
+          session: `${year}-${String(year + 1).slice(2)}`,
+          inchargeUid: '',
+          ...DEFAULT_CLASS_SETTINGS,
+          feeStartMonth: `${year}-07`,
+          feeEndMonth: `${year + 1}-06`,
+        },
   );
   const [err, setErr] = useState({});
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }));
+
+  const handleSessionChange = (e) => {
+    const val = e.target.value;
+    setF((x) => {
+      const next = { ...x, session: val };
+      if (!cls) {
+        const match = val.match(/^(\d{4})/);
+        if (match) {
+          const sYear = Number(match[1]);
+          next.feeStartMonth = `${sYear}-07`;
+          next.feeEndMonth = `${sYear + 1}-06`;
+          if (!x.code || x.code === suggestClassCode(x.name, x.section, x.session)) {
+            next.code = suggestClassCode(x.name, x.section, val);
+          }
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleStartMonthChange = (v) => {
+    setF((x) => ({
+      ...x,
+      feeStartMonth: v,
+      feeEndMonth: v && (!x.feeEndMonth || x.feeEndMonth === addMonthsPeriod(x.feeStartMonth, 11)) ? addMonthsPeriod(v, 11) : x.feeEndMonth,
+    }));
+  };
 
   const pickPresetName = (name) => {
     setF((x) => {
@@ -748,6 +795,7 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       defaultFeeDeadlineDay: Number(f.defaultFeeDeadlineDay),
       fixedFineAfterDeadline: Number(f.fixedFineAfterDeadline),
       feeStartMonth: f.feeStartMonth || '',
+      feeEndMonth: f.feeEndMonth || '',
     };
     const base = { code: id, name: f.name.trim(), section: f.section.trim(), session: f.session.trim(), settings };
     const ops = cls
@@ -806,7 +854,7 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Field label="শাখা / বিভাগ">
+          <Field label=" শাখা / বিভাগ">
             <Input value={f.section} onChange={set('section')} placeholder="যেমন বিজ্ঞান" />
           </Field>
           <div className="mt-1 flex flex-wrap gap-1">
@@ -823,7 +871,7 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
           </div>
         </div>
         <Field label="সেশন">
-          <Input value={f.session} onChange={set('session')} placeholder="2026-27" />
+          <Input value={f.session} onChange={handleSessionChange} placeholder="2026-27" />
         </Field>
       </div>
       <Field
@@ -873,9 +921,35 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
           <Input type="number" inputMode="numeric" value={f.fixedFineAfterDeadline} onChange={set('fixedFineAfterDeadline')} />
         </Field>
       </div>
-      <Field label="বেতন শুরুর মাস" hint="এর আগের মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — বাকি দেখাবে না">
-        <FeeStartSelect value={f.feeStartMonth} onChange={(v) => setF((x) => ({ ...x, feeStartMonth: v }))} />
-      </Field>
+
+      <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[13.5px] font-bold text-ink">শিক্ষাবর্ষ / সেশনের বেতন মাস</p>
+          <Badge tone="blue">শুরু ও শেষ মাস</Badge>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="শুরু মাস (ভর্তি শুরু)">
+            <FeeMonthSelect
+              value={f.feeStartMonth}
+              onChange={handleStartMonthChange}
+              placeholder="শুরুর মাস নির্বাচন..."
+            />
+          </Field>
+          <Field label="শেষ মাস (সেশন শেষ)">
+            <FeeMonthSelect
+              value={f.feeEndMonth}
+              onChange={(v) => setF((x) => ({ ...x, feeEndMonth: v }))}
+              placeholder="শেষ মাস নির্বাচন..."
+            />
+          </Field>
+        </div>
+        <div className="flex items-start gap-2.5 rounded-xl bg-emerald-50/90 p-2.5 text-[12.5px] text-emerald-800 ring-1 ring-inset ring-emerald-200/70">
+          <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <p className="leading-snug">
+            ভর্তির মাস <strong>({f.feeStartMonth ? feeStartLabel(f.feeStartMonth) : 'শুরুর মাস'})</strong>-এর বেতন ভর্তির সময় নেওয়া হয়েছে বিধায় শিক্ষার্থীদের মাসিক বেতনে এটি স্বয়ংক্রিয়ভাবে <strong>'বেতন হয়ে গেছে'</strong> হিসেবে দেখাবে। পরবর্তী মাস থেকে ইনচার্জ নিয়মিত বেতন গ্রহণ করবেন।
+          </p>
+        </div>
+      </div>
 
       {cls && (
         <Button variant="soft-danger" icon={Trash2} block onClick={remove} disabled={busy}>

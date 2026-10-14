@@ -20,6 +20,8 @@ export const DEFAULT_CLASS_SETTINGS = {
   finePerDay: 50,
   fineType: 'fixed',
   absentFine: 100,
+  feeStartMonth: '',
+  feeEndMonth: '',
   // The in-charge's own groupings — edited in Settings → বিভাগ ও শাখা
   departments: [
     { id: 'Science', bn: 'বিজ্ঞান' },

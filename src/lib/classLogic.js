@@ -17,6 +17,8 @@ export function buildClassSettings({ classDoc, classId, institution, month, year
   return {
     ...DEFAULT_CLASS_SETTINGS,
     ...(c.settings || {}),
+    feeStartMonth: c.settings?.feeStartMonth || '',
+    feeEndMonth: c.settings?.feeEndMonth || '',
     classCode: classId,
     className: c.name || classId,
     institutionName: institution?.name || '',
@@ -56,26 +58,61 @@ export function newFeeRow(student, settings, month = settings.currentMonth, year
 export const periodOf = (month, year) => `${year}-${pad(EN_MONTHS.indexOf(month) + 1, 2)}`;
 
 /**
- * Class setting `feeStartMonth` ("2026-11"): fees are collected from this month on. Earlier months
- * were taken with admission — never owed, never collected, labelled "ভর্তির সময় নেওয়া".
+ * Calculates a period N months after a given period: "2026-07" + 11 → "2027-06"
+ */
+export const addMonthsPeriod = (period, count = 11) => {
+  if (!period || !period.includes('-')) return '';
+  const [y, m] = period.split('-').map(Number);
+  const total = y * 12 + (m - 1) + count;
+  const ry = Math.floor(total / 12);
+  const rm = (total % 12) + 1;
+  return `${ry}-${pad(rm, 2)}`;
+};
+
+/**
+ * True only for the admission/start month (e.g. July 2027 for XI-2027-28).
+ * This month's fee was taken at admission — displayed as "বেতন হয়ে গেছে (ভর্তির সময়)", never due.
+ */
+export const isAdmissionMonth = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) === feeStartMonth;
+
+/**
+ * Months strictly before the class session began (e.g. before July 2027).
  */
 export const isBeforeFeeStart = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) < feeStartMonth;
 
+/**
+ * Either the admission month or earlier — tuition was covered at admission, nothing is owed.
+ */
+export const isAdmissionPaid = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) <= feeStartMonth;
+
 export const BEFORE_START_LABEL = 'বেতন ভর্তির সময় নেওয়া হয়েছে';
+export const ADMISSION_PAID_LABEL = 'বেতন হয়ে গেছে (ভর্তির সময় নেওয়া)';
 
 /**
- * The months a class collects fees for: from its fee start month (or the current session's July)
- * through the end of the current session (June) — e.g. January 2026 → June 2027 for a class
- * carrying arrears. Returns [{ month, year, period }] in order.
+ * The months a class collects fees for: from its fee start / admission month
+ * through its fee end month (or 11 months later / session end).
+ * Returns [{ month, year, period }] in chronological order.
  */
-export function feeMonthRange({ feeStartMonth, currentMonth, currentYear }) {
+export function feeMonthRange({ feeStartMonth, feeEndMonth, currentMonth, currentYear }) {
   const curIdx = ACADEMIC_MONTHS.indexOf(currentMonth);
   const sessionStart = curIdx <= 5 ? currentYear : currentYear - 1;
   let [y, m] = feeStartMonth ? feeStartMonth.split('-').map(Number) : [sessionStart, 7];
+
+  let endPeriod = feeEndMonth;
+  if (!endPeriod) {
+    if (feeStartMonth) {
+      endPeriod = addMonthsPeriod(feeStartMonth, 11);
+    } else {
+      endPeriod = `${sessionStart + 1}-06`;
+    }
+  }
+
   const out = [];
-  while (y < sessionStart + 1 || (y === sessionStart + 1 && m <= 6)) {
+  while (true) {
     const month = EN_MONTHS[m - 1];
-    out.push({ month, year: y, period: periodOf(month, y) });
+    const period = periodOf(month, y);
+    out.push({ month, year: y, period });
+    if (period >= endPeriod) break;
     m += 1;
     if (m > 12) {
       m = 1;
@@ -87,7 +124,12 @@ export function feeMonthRange({ feeStartMonth, currentMonth, currentYear }) {
 }
 
 /** "নভেম্বর 2026" for "2026-11" */
-export const feeStartLabel = (feeStartMonth) => (feeStartMonth ? `${BN_MONTHS[Number(feeStartMonth.slice(5)) - 1]} ${feeStartMonth.slice(0, 4)}` : '');
+export const feeStartLabel = (feeStartMonth) => {
+  if (!feeStartMonth || !feeStartMonth.includes('-')) return '';
+  const [y, m] = feeStartMonth.split('-').map(Number);
+  const bName = m >= 1 && m <= 12 ? BN_MONTHS[m - 1] : '';
+  return bName ? `${bName} ${y}` : feeStartMonth;
+};
 
 /**
  * Default for "this month's fee was taken at admission": yes for a new intake (no fee start, or

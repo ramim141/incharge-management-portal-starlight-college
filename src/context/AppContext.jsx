@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { backend, isLocal } from '../backend';
-import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, isAdmissionMonth, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels, monthBn, taka, studentDueItems, fmtDate, shiftISODate, daysBetween } from '../lib/format';
 import { DEFAULT_WHATSAPP_TEMPLATE } from '../lib/defaults';
 import { newId, portalKey, quickHash } from '../lib/hash';
@@ -22,9 +22,24 @@ export { studentIdFor };
 
 // "due" is always derived, so a fee row can never disagree with itself
 const normalizeFee = (f, feeStartMonth) => {
-  // Months before the class's fee start were taken with admission: nothing is owed for them
-  if (isBeforeFeeStart(f.month, f.year, feeStartMonth)) {
-    return { ...f, amount: Number(f.amount || 0), fine: 0, paid: Number(f.paid || 0), due: 0, status: 'Paid', beforeStart: true };
+  const isStartMonth = isAdmissionMonth(f.month, f.year, feeStartMonth);
+  const isBefore = isBeforeFeeStart(f.month, f.year, feeStartMonth);
+
+  // Months before the class's fee start were before session; start month was taken with admission
+  if (isBefore || isStartMonth) {
+    const amount = Number(f.amount || 0);
+    return {
+      ...f,
+      amount,
+      fine: 0,
+      fineWaived: 0,
+      paid: Math.max(Number(f.paid || 0), amount),
+      due: 0,
+      status: 'Paid',
+      beforeStart: isBefore,
+      atAdmission: isStartMonth,
+      note: f.note || (isStartMonth ? ADMISSION_NOTE : 'ভর্তির পূর্ববর্তী'),
+    };
   }
   const amount = Number(f.amount || 0);
   const fine = Number(f.fine || 0);
@@ -82,16 +97,6 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const loading = classDoc === undefined || COLLS.some((c) => !ready[c]);
 
   /* ───────────── derived data ───────────── */
-  const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
-  const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
-  const fees = useMemo(() => raw.fees.map((f) => normalizeFee(f, feeStartMonth)), [raw.fees, feeStartMonth]);
-  const examFees = raw.examFees;
-  const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
-  const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
-  const attendance = useMemo(() => Object.fromEntries(raw.attendance.map((a) => [a.date || a.id, a.records || {}])), [raw.attendance]);
-
-  const closings = useMemo(() => Object.fromEntries(raw.closings.map((c) => [c.date || c.id, c])), [raw.closings]);
-
   const now = new Date();
   const currentMonth = EN_MONTHS[now.getMonth()];
   const currentYear = now.getFullYear();
@@ -102,6 +107,37 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   );
   // Label helpers (groupBn, sectionBn…) read this class's own department / section names
   setClassLabels(settings);
+
+  const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
+  const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
+  const feeEndMonth = classDoc?.settings?.feeEndMonth || '';
+  const fees = useMemo(() => {
+    const normalized = raw.fees.map((f) => normalizeFee(f, feeStartMonth));
+    if (feeStartMonth) {
+      const [sY, sM] = feeStartMonth.split('-').map(Number);
+      const startMonthName = EN_MONTHS[sM - 1];
+      const existing = new Set(
+        normalized
+          .filter((f) => f.month === startMonthName && Number(f.year) === sY)
+          .map((f) => f.studentId),
+      );
+      const synthesized = [];
+      students.forEach((s) => {
+        if (!existing.has(s.id)) {
+          const row = newFeeRow(s, settings, startMonthName, sY);
+          synthesized.push(normalizeFee(markFeePaid(row, ADMISSION_NOTE), feeStartMonth));
+        }
+      });
+      return [...normalized, ...synthesized];
+    }
+    return normalized;
+  }, [raw.fees, feeStartMonth, students, settings]);
+  const examFees = raw.examFees;
+  const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
+  const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
+  const attendance = useMemo(() => Object.fromEntries(raw.attendance.map((a) => [a.date || a.id, a.records || {}])), [raw.attendance]);
+
+  const closings = useMemo(() => Object.fromEntries(raw.closings.map((c) => [c.date || c.id, c])), [raw.closings]);
 
   const P = (coll, id) => ['classes', classId, coll, id];
   const write = (ops) => backend.write(ops);
@@ -355,7 +391,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   };
 
   /** Every fee month of the class from its start up to the end of the session (see feeMonthRange) */
-  const feeMonths = useMemo(() => feeMonthRange({ feeStartMonth, currentMonth, currentYear }), [feeStartMonth, currentMonth, currentYear]);
+  const feeMonths = useMemo(() => feeMonthRange({ feeStartMonth, feeEndMonth, currentMonth, currentYear }), [feeStartMonth, feeEndMonth, currentMonth, currentYear]);
 
   /**
    * Creates the missing fee rows for every month from the fee start up to this month (arrears),
@@ -367,10 +403,11 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     feeMonths
       .filter((m) => m.period <= upto)
       .forEach(({ month, year }) => {
+        const isStart = isAdmissionMonth(month, year, feeStartMonth);
         activeStudents.forEach((s) => {
           if (fees.some((f) => f.studentId === s.id && f.month === month && Number(f.year) === year)) return;
           const row = feeRow(s, month, year);
-          ops.push({ type: 'set', path: P('fees', row.id), data: row });
+          ops.push({ type: 'set', path: P('fees', row.id), data: isStart ? markFeePaid(row, ADMISSION_NOTE) : row });
         });
       });
     if (ops.length) await write(ops);
@@ -413,12 +450,14 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   /** Creates the month's unpaid fee for every active student that has none yet; `deadline` (YYYY-MM-DD) overrides the class default */
   const generateMonthFees = async (month = currentMonth, year = currentYear, deadline = '') => {
     if (isBeforeFeeStart(month, year, feeStartMonth)) return 0;
+    const isStart = isAdmissionMonth(month, year, feeStartMonth);
     const have = new Set(fees.filter((f) => f.month === month && Number(f.year) === Number(year)).map((f) => f.studentId));
     const ops = activeStudents
       .filter((s) => !have.has(s.id))
       .map((s) => {
         const row = feeRow(s, month, Number(year));
-        return { type: 'set', path: P('fees', row.id), data: deadline ? { ...row, deadline } : row };
+        const finalRow = isStart ? markFeePaid(row, ADMISSION_NOTE) : row;
+        return { type: 'set', path: P('fees', row.id), data: deadline ? { ...finalRow, deadline } : finalRow };
       });
     if (ops.length) await write(ops);
     return ops.length;
@@ -879,7 +918,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
 
   const deleteExamFees = (ids) => write(examFees.filter((e) => ids.includes(e.id)).map((e) => ({ type: 'delete', path: P('examFees', e.id) })));
 
-  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
+  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'feeStartMonth', 'feeEndMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
   const setSettings = async (form) => {
     const rules = Object.fromEntries(RULE_KEYS.map((k) => [k, form[k] ?? settings[k]]));
     const incharge = {
@@ -1076,7 +1115,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
         if (!last || last < shiftISODate(owed[0], -REMIND_BEFORE_DAYS)) stage = 'upcoming';
       }
       if (!stage) return;
-      if (!s.guardianPhone) out.noPhone += 1;
+      if (!s.guardianPhone && !s.studentPhone) out.noPhone += 1;
       else out[stage].push(s);
     });
     return out;
@@ -1187,10 +1226,12 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     thisMonthCollection, thisMonthDue, totalDueAcrossAll, paidCount, dueCount, overdueCount,
     missingFeeCount: missingFeeStudents.length,
     feeStartMonth,
+    feeEndMonth,
     feeMonths,
     generateArrears,
     waiveStudentFines,
     isBeforeStart: (month, year) => isBeforeFeeStart(month, year, feeStartMonth),
+    isAdmissionMonth: (month, year) => isAdmissionMonth(month, year, feeStartMonth),
 
     activeTab, setActiveTab,
 
