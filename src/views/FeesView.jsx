@@ -16,7 +16,7 @@ export const REASONS = [
 ];
 
 export const FeesView = () => {
-  const { fees, examFees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, feeStartMonth, feeMonths, generateArrears } = useApp();
+  const { fees, examFees, students, settings, applyAutoFines, generateMonthFees, markMonthPaid, updateFee, isBeforeStart, isAdmissionMonth, feeStartMonth, feeMonths, generateArrears } = useApp();
   const { openPayment, confirm, toast } = useUI();
 
   // The class's fee months: from its fee start month (e.g. Jan 2026 for a class with arrears)
@@ -43,11 +43,12 @@ export const FeesView = () => {
   );
 
   const beforeStart = isBeforeStart(month, year);
-  const missing = beforeStart ? 0 : students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
+  const isStartMonth = isAdmissionMonth ? isAdmissionMonth(month, year) : (!!feeStartMonth && periodOf(month, year) === feeStartMonth);
+  const missing = beforeStart || isStartMonth ? 0 : students.filter((s) => s.status !== 'inactive' && !monthFees.some((f) => f.studentId === s.id)).length;
   const startLabel = feeStartMonth ? `${monthBn(EN_MONTHS[Number(feeStartMonth.slice(5)) - 1])} ${feeStartMonth.slice(0, 4)}` : '';
   // Months from the fee start up to now that some students have no fee row for yet
   const arrearsMissing = feeMonths
-    .filter((m) => m.period <= curPeriod && !isBeforeStart(m.month, m.year))
+    .filter((m) => m.period <= curPeriod && !isBeforeStart(m.month, m.year) && (!isAdmissionMonth || !isAdmissionMonth(m.month, m.year)))
     .reduce((n, m) => n + students.filter((s) => s.status !== 'inactive' && !fees.some((f) => f.studentId === s.id && f.month === m.month && Number(f.year) === m.year)).length, 0);
   const createArrears = async () => {
     const ok = await confirm({
@@ -124,14 +125,26 @@ export const FeesView = () => {
         <SelectPill label="মাস" value={period} onChange={setPeriod} options={feeMonths.map((m) => ({ value: m.period, label: `${monthBn(m.month)} ${m.year}` }))} />
       </PageHeader>
 
-      {beforeStart && (
+      {isStartMonth && (
         <div className="mb-3 flex items-center gap-3 rounded-3xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
           <CheckCheck className="h-6 w-6 shrink-0 text-emerald-600" />
           <div className="min-w-0 flex-1">
             <p className="text-[14.5px] font-bold text-emerald-900">
+              {monthBn(month)} {year}: ভর্তি শুরুর মাস (বেতন হয়ে গেছে)
+            </p>
+            <p className="text-[12.5px] text-emerald-800">প্রথম মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — এই মাসে কোনো বকেয়া নেই</p>
+          </div>
+        </div>
+      )}
+
+      {beforeStart && !isStartMonth && (
+        <div className="mb-3 flex items-center gap-3 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+          <CheckCheck className="h-6 w-6 shrink-0 text-slate-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-bold text-slate-800">
               {monthBn(month)}: {BEFORE_START_LABEL}
             </p>
-            <p className="text-[12.5px] text-emerald-800">মাসিক বেতন নেওয়া শুরু {startLabel} থেকে — এই মাসে কিছু আদায় করতে হবে না</p>
+            <p className="text-[12.5px] text-slate-500">ক্লাস শুরুর আগের মাস — এই মাসে কিছু আদায় করতে হবে না</p>
           </div>
         </div>
       )}

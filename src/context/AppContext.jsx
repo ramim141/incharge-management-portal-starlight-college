@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { backend, isLocal } from '../backend';
-import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, isAdmissionMonth, isXIClass, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels, monthBn, taka, studentDueItems, fmtDate, shiftISODate, daysBetween } from '../lib/format';
 import { DEFAULT_WHATSAPP_TEMPLATE } from '../lib/defaults';
 import { newId, portalKey, quickHash } from '../lib/hash';
@@ -15,17 +15,50 @@ import { newNotice, noticesForPortal } from '../lib/notices';
 // screens use. Each in-charge only ever mounts their own class; the principal can mount any.
 export const AppContext = createContext(null);
 
-const COLLS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance', 'closings', 'notices', 'leaves'];
+const COLLS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance', 'closings', 'notices', 'leaves', 'queries'];
 
 export { studentIdFor };
 
 
 // "due" is always derived, so a fee row can never disagree with itself
-const normalizeFee = (f, feeStartMonth) => {
-  // Months before the class's fee start were taken with admission: nothing is owed for them
-  if (isBeforeFeeStart(f.month, f.year, feeStartMonth)) {
-    return { ...f, amount: Number(f.amount || 0), fine: 0, paid: Number(f.paid || 0), due: 0, status: 'Paid', beforeStart: true };
+const normalizeFee = (f, feeStartMonth, classInfo) => {
+  const isStartMonth = isAdmissionMonth(f.month, f.year, feeStartMonth, classInfo);
+  const isBefore = isBeforeFeeStart(f.month, f.year, feeStartMonth);
+
+  // Months strictly before the class's fee start were before session
+  if (isBefore) {
+    const amount = Number(f.amount || 0);
+    return {
+      ...f,
+      amount,
+      fine: 0,
+      fineWaived: 0,
+      paid: Math.max(Number(f.paid || 0), amount),
+      due: 0,
+      status: 'Paid',
+      beforeStart: true,
+      atAdmission: false,
+      note: f.note || 'ভর্তির পূর্ববর্তী',
+    };
   }
+
+  // Start month taken with admission (only if explicitly enabled)
+  if (isStartMonth) {
+    const amount = Number(f.amount || 0);
+    return {
+      ...f,
+      amount,
+      fine: 0,
+      fineWaived: 0,
+      paid: Math.max(Number(f.paid || 0), amount),
+      due: 0,
+      status: 'Paid',
+      beforeStart: false,
+      atAdmission: true,
+      note: f.note || ADMISSION_NOTE,
+    };
+  }
+
   const amount = Number(f.amount || 0);
   const fine = Number(f.fine || 0);
   // Part (or all) of a late fine can be waived (মওকুফ); it no longer counts as owed
@@ -36,7 +69,7 @@ const normalizeFee = (f, feeStartMonth) => {
   if (due === 0 && (paid > 0 || amount === 0)) status = 'Paid';
   else if (paid > 0 && status !== 'Overdue') status = 'Partial';
   else if (status === 'Paid') status = 'Due';
-  return { ...f, amount, fine, fineWaived, paid, due, status };
+  return { ...f, amount, fine, fineWaived, paid, due, status, beforeStart: false, atAdmission: false };
 };
 
 // A fine can be partly waived and partly paid; what is still owed is derived from those
@@ -54,7 +87,7 @@ export const absenceFineId = (date, studentId) => `fine-abs-${date}-${studentId}
 
 export function AppProvider({ classId, profile, institution, onExit, onSignOut, onOpenPortal, children }) {
   const [classDoc, setClassDoc] = useState(undefined);
-  const [raw, setRaw] = useState({ students: [], fees: [], examFees: [], fines: [], payments: [], attendance: [], closings: [], notices: [], leaves: [] });
+  const [raw, setRaw] = useState({ students: [], fees: [], examFees: [], fines: [], payments: [], attendance: [], closings: [], notices: [], leaves: [], queries: [] });
   const [ready, setReady] = useState({});
   const [activeTab, setTab] = useState('dashboard');
   // Moving between sections cross-fades when the browser supports it; otherwise it just switches
@@ -82,16 +115,6 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const loading = classDoc === undefined || COLLS.some((c) => !ready[c]);
 
   /* ───────────── derived data ───────────── */
-  const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
-  const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
-  const fees = useMemo(() => raw.fees.map((f) => normalizeFee(f, feeStartMonth)), [raw.fees, feeStartMonth]);
-  const examFees = raw.examFees;
-  const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
-  const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
-  const attendance = useMemo(() => Object.fromEntries(raw.attendance.map((a) => [a.date || a.id, a.records || {}])), [raw.attendance]);
-
-  const closings = useMemo(() => Object.fromEntries(raw.closings.map((c) => [c.date || c.id, c])), [raw.closings]);
-
   const now = new Date();
   const currentMonth = EN_MONTHS[now.getMonth()];
   const currentYear = now.getFullYear();
@@ -102,6 +125,61 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   );
   // Label helpers (groupBn, sectionBn…) read this class's own department / section names
   setClassLabels(settings);
+
+  const students = useMemo(() => [...raw.students].sort((a, b) => Number(a.roll) - Number(b.roll)), [raw.students]);
+  const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
+  const feeEndMonth = classDoc?.settings?.feeEndMonth || '';
+  const fees = useMemo(() => {
+    const isXI = isXIClass(settings) || isXIClass(classId);
+    const normalized = raw.fees.map((f) => {
+      // For XI class, remove any default ADMISSION_NOTE (ভর্তির সময় আদায়) on September / start month
+      // that was automatically set when no payment receipt exists
+      const isStartPeriod = feeStartMonth ? periodOf(f.month, Number(f.year)) === feeStartMonth : f.month === 'September';
+      const isAdmNote = f.note === ADMISSION_NOTE || f.note === 'ভর্তির সময় আদায়';
+      if (isXI && isStartPeriod && isAdmNote) {
+        const hasPayment = (raw.payments || []).some(
+          (p) => p.feeId === f.id || (p.studentId === f.studentId && Array.isArray(p.feeMonths) && p.feeMonths.includes(periodOf(f.month, Number(f.year))))
+        );
+        if (!hasPayment) {
+          const amt = Number(f.amount || settings.defaultMonthlyFee || 0);
+          return normalizeFee({ ...f, paid: 0, due: amt, status: 'Due', note: '', atAdmission: false }, feeStartMonth, settings);
+        }
+      }
+      return normalizeFee(f, feeStartMonth, settings);
+    });
+
+    const isStartAdmission = isAdmissionMonth(
+      feeStartMonth ? EN_MONTHS[Number(feeStartMonth.split('-')[1]) - 1] : '',
+      feeStartMonth ? Number(feeStartMonth.split('-')[0]) : 0,
+      feeStartMonth,
+      settings
+    );
+
+    if (feeStartMonth && isStartAdmission) {
+      const [sY, sM] = feeStartMonth.split('-').map(Number);
+      const startMonthName = EN_MONTHS[sM - 1];
+      const existing = new Set(
+        normalized
+          .filter((f) => f.month === startMonthName && Number(f.year) === sY)
+          .map((f) => f.studentId),
+      );
+      const synthesized = [];
+      students.forEach((s) => {
+        if (!existing.has(s.id)) {
+          const row = newFeeRow(s, settings, startMonthName, sY);
+          synthesized.push(normalizeFee(markFeePaid(row, ADMISSION_NOTE), feeStartMonth, settings));
+        }
+      });
+      return [...normalized, ...synthesized];
+    }
+    return normalized;
+  }, [raw.fees, raw.payments, feeStartMonth, students, settings, classId]);
+  const examFees = raw.examFees;
+  const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
+  const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
+  const attendance = useMemo(() => Object.fromEntries(raw.attendance.map((a) => [a.date || a.id, a.records || {}])), [raw.attendance]);
+
+  const closings = useMemo(() => Object.fromEntries(raw.closings.map((c) => [c.date || c.id, c])), [raw.closings]);
 
   const P = (coll, id) => ['classes', classId, coll, id];
   const write = (ops) => backend.write(ops);
@@ -355,7 +433,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   };
 
   /** Every fee month of the class from its start up to the end of the session (see feeMonthRange) */
-  const feeMonths = useMemo(() => feeMonthRange({ feeStartMonth, currentMonth, currentYear }), [feeStartMonth, currentMonth, currentYear]);
+  const feeMonths = useMemo(() => feeMonthRange({ feeStartMonth, feeEndMonth, currentMonth, currentYear }), [feeStartMonth, feeEndMonth, currentMonth, currentYear]);
 
   /**
    * Creates the missing fee rows for every month from the fee start up to this month (arrears),
@@ -367,10 +445,11 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     feeMonths
       .filter((m) => m.period <= upto)
       .forEach(({ month, year }) => {
+        const isStart = isAdmissionMonth(month, year, feeStartMonth, settings);
         activeStudents.forEach((s) => {
           if (fees.some((f) => f.studentId === s.id && f.month === month && Number(f.year) === year)) return;
           const row = feeRow(s, month, year);
-          ops.push({ type: 'set', path: P('fees', row.id), data: row });
+          ops.push({ type: 'set', path: P('fees', row.id), data: isStart ? markFeePaid(row, ADMISSION_NOTE) : row });
         });
       });
     if (ops.length) await write(ops);
@@ -413,12 +492,14 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   /** Creates the month's unpaid fee for every active student that has none yet; `deadline` (YYYY-MM-DD) overrides the class default */
   const generateMonthFees = async (month = currentMonth, year = currentYear, deadline = '') => {
     if (isBeforeFeeStart(month, year, feeStartMonth)) return 0;
+    const isStart = isAdmissionMonth(month, year, feeStartMonth, settings);
     const have = new Set(fees.filter((f) => f.month === month && Number(f.year) === Number(year)).map((f) => f.studentId));
     const ops = activeStudents
       .filter((s) => !have.has(s.id))
       .map((s) => {
         const row = feeRow(s, month, Number(year));
-        return { type: 'set', path: P('fees', row.id), data: deadline ? { ...row, deadline } : row };
+        const finalRow = isStart ? markFeePaid(row, ADMISSION_NOTE) : row;
+        return { type: 'set', path: P('fees', row.id), data: deadline ? { ...finalRow, deadline } : finalRow };
       });
     if (ops.length) await write(ops);
     return ops.length;
@@ -879,7 +960,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
 
   const deleteExamFees = (ids) => write(examFees.filter((e) => ids.includes(e.id)).map((e) => ({ type: 'delete', path: P('examFees', e.id) })));
 
-  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
+  const RULE_KEYS = ['defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'finePerDay', 'fineType', 'absentFine', 'feeStartMonth', 'feeEndMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
   const setSettings = async (form) => {
     const rules = Object.fromEntries(RULE_KEYS.map((k) => [k, form[k] ?? settings[k]]));
     const incharge = {
@@ -941,7 +1022,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
           }
           const snap = buildPortalSnapshot({
             student: s, fees, examFees, fines, payments, attendance, settings,
-            attStats: getStudentAttendanceStats(s.id), totalDue: calculateStudentTotalDue(s.id), leaves: raw.leaves, notices: noticesForPortal(raw.notices, todayISO()),
+            attStats: getStudentAttendanceStats(s.id), totalDue: calculateStudentTotalDue(s.id), leaves: raw.leaves, notices: noticesForPortal(raw.notices, todayISO()), queries: raw.queries || [],
           });
           const hash = quickHash(JSON.stringify(snap));
           if (hash !== s.portalHash || key !== s.portalKey) {
@@ -976,7 +1057,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, students, fees, examFees, fines, payments, attendance, settings, classDoc, raw.leaves, raw.notices]);
+  }, [loading, students, fees, examFees, fines, payments, attendance, settings, classDoc, raw.leaves, raw.notices, raw.queries]);
 
 
 
@@ -1055,6 +1136,88 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     if (n) audit({ kind: 'student', action: 'নোটিশ মুছেছেন', text: n.title });
   };
 
+  /** Send a chat message or reply to a student */
+  const sendChatMessage = async ({ studentId, text, roll, studentName, portalKey = '' }) => {
+    const stamp = new Date().toISOString();
+    const clean = String(text).trim();
+    if (!clean) return;
+    const msgId = newId('msg');
+
+    // Also find any pending queries for this student and mark them replied
+    const studentQueries = (raw.queries || []).filter(
+      (q) => (q.studentId === studentId || (roll != null && String(q.roll) === String(roll))) && q.status === 'pending',
+    );
+
+    const ops = [
+      {
+        type: 'set',
+        path: P('queries', msgId),
+        data: {
+          id: msgId,
+          classId,
+          studentId,
+          roll: Number(roll || 0),
+          studentName: studentName || 'শিক্ষার্থী',
+          portalKey: portalKey || '',
+          subject: 'মেসেজ',
+          message: clean,
+          text: clean,
+          status: 'replied',
+          sender: 'teacher',
+          senderName: profile?.name || settings.inchargeName || 'ইনচার্জ',
+          reply: clean,
+          repliedAt: stamp,
+          repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+          createdAt: stamp,
+        },
+      },
+    ];
+
+    studentQueries.forEach((q) => {
+      ops.push({
+        type: 'merge',
+        path: P('queries', q.id),
+        data: {
+          status: 'replied',
+          repliedAt: stamp,
+          repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+        },
+      });
+    });
+
+    await write(ops);
+  };
+
+  /** The in-charge replies to a student query */
+  const replyQuery = async (id, replyText) => {
+    const target = (raw.queries || []).find((q) => q.id === id);
+    if (target) {
+      await sendChatMessage({
+        studentId: target.studentId,
+        text: replyText,
+        roll: target.roll,
+        studentName: target.studentName,
+        portalKey: target.portalKey,
+      });
+      return;
+    }
+    const stamp = new Date().toISOString();
+    await write([{
+      type: 'merge',
+      path: P('queries', id),
+      data: {
+        status: 'replied',
+        reply: String(replyText).trim(),
+        repliedAt: stamp,
+        repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+      },
+    }]);
+  };
+
+  const deleteQuery = async (id) => {
+    await write([{ type: 'delete', path: P('queries', id) }]);
+  };
+
   /* ───────── reminders: who should be nudged now ───────── */
   const REMIND_BEFORE_DAYS = 2; // first nudge when the deadline is this close
   const REMIND_OVERDUE_EVERY = 3; // then every few days while it stays unpaid
@@ -1076,7 +1239,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
         if (!last || last < shiftISODate(owed[0], -REMIND_BEFORE_DAYS)) stage = 'upcoming';
       }
       if (!stage) return;
-      if (!s.guardianPhone) out.noPhone += 1;
+      if (!s.guardianPhone && !s.studentPhone) out.noPhone += 1;
       else out[stage].push(s);
     });
     return out;
@@ -1187,17 +1350,19 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     thisMonthCollection, thisMonthDue, totalDueAcrossAll, paidCount, dueCount, overdueCount,
     missingFeeCount: missingFeeStudents.length,
     feeStartMonth,
+    feeEndMonth,
     feeMonths,
     generateArrears,
     waiveStudentFines,
     isBeforeStart: (month, year) => isBeforeFeeStart(month, year, feeStartMonth),
+    isAdmissionMonth: (month, year) => isAdmissionMonth(month, year, feeStartMonth, settings),
 
     activeTab, setActiveTab,
 
     addStudent, updateStudent, deleteStudent, updateFee, markMonthPaid, generateMonthFees, removeMonthFees, setMonthDeadline, applyAutoFines, saveAttendanceRecord,
     getStudentAttendanceStats, recordPayment, updatePayment, deletePayment, addFine, updateFine, waiveFine, deleteFine, absenceFineFor, createExam, updateExamFees, deleteExamFees, calculateStudentTotalDue,
     generateWhatsAppMessage, getStudentDueItems, importBackup,
-    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, decideLeave, addLeave, saveNotice, deleteNotice,
+    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, queries: raw.queries || [], replyQuery, sendChatMessage, deleteQuery, decideLeave, addLeave, saveNotice, deleteNotice,
     // the same actions, each leaving a line in the audit log
     ...L,
   };

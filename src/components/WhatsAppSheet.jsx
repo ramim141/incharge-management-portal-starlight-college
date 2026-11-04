@@ -15,7 +15,7 @@ export function WhatsAppSheet() {
       onClose={closeWhatsApp}
       full={n > 1}
       title="WhatsApp রিমাইন্ডার"
-      subtitle={n > 1 ? `${n} জন অভিভাবক` : 'অভিভাবককে ফি রিমাইন্ডার'}
+      subtitle={n > 1 ? `${n} জন প্রাপক` : 'ফি রিমাইন্ডার'}
     >
       {n > 0 && <Body list={whatsapp} />}
     </Sheet>
@@ -28,6 +28,7 @@ function Body({ list }) {
   const [edits, setEdits] = useState({});
   const [sent, setSent] = useState(() => new Set());
   const [copied, setCopied] = useState(false);
+  const [recipientTypes, setRecipientTypes] = useState({}); // { [studentId]: 'guardian' | 'student' }
 
   const s = list[idx];
   const message = edits[s.id] ?? generateWhatsAppMessage(s);
@@ -35,11 +36,16 @@ function Body({ list }) {
   const due = items.reduce((a, i) => a + i.amount, 0);
   const multi = list.length > 1;
 
+  const hasGuardian = Boolean(s.guardianPhone);
+  const hasStudent = Boolean(s.studentPhone);
+  const currentRecipient = recipientTypes[s.id] || (hasGuardian ? 'guardian' : hasStudent ? 'student' : 'guardian');
+  const targetPhone = currentRecipient === 'student' ? (s.studentPhone || s.guardianPhone) : (s.guardianPhone || s.studentPhone);
+
   const markSent = () => {
     setSent((prev) => new Set(prev).add(s.id));
     markReminded([s.id]);
     if (multi) {
-      // Move on to the next guardian who hasn't been messaged yet
+      // Move on to the next recipient who hasn't been messaged yet
       setTimeout(() => {
         const next = list.findIndex((x, i) => i > idx && !sent.has(x.id) && x.id !== s.id);
         if (next >= 0) setIdx(next);
@@ -94,7 +100,16 @@ function Body({ list }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-bold text-ink">{s.name}</p>
           <p className="tabular text-[13px] text-slate-500">
-            {s.guardianPhone}
+            {targetPhone ? (
+              <span>
+                {targetPhone}{' '}
+                <span className="text-[11.5px] font-medium text-slate-400">
+                  ({currentRecipient === 'student' ? 'শিক্ষার্থী' : 'অভিভাবক'})
+                </span>
+              </span>
+            ) : (
+              <span className="text-rose-500 font-medium">কোনো নম্বর নেই</span>
+            )}
           </p>
         </div>
         <div className="text-right">
@@ -102,6 +117,37 @@ function Body({ list }) {
           <p className="tabular text-[17px] font-extrabold text-rose-600">{taka(due)}</p>
         </div>
       </div>
+
+      {hasGuardian && hasStudent && (
+        <div className="rounded-2xl bg-slate-100 p-1 flex gap-1">
+          <button
+            type="button"
+            onClick={() => setRecipientTypes((prev) => ({ ...prev, [s.id]: 'guardian' }))}
+            className={cx(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-[13px] font-semibold transition',
+              currentRecipient === 'guardian'
+                ? 'bg-white text-emerald-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 active:bg-slate-200/60',
+            )}
+          >
+            <span>👨‍👦 অভিভাবক</span>
+            <span className="tabular text-[11px] opacity-75 font-normal">({s.guardianPhone})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setRecipientTypes((prev) => ({ ...prev, [s.id]: 'student' }))}
+            className={cx(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 px-2 text-[13px] font-semibold transition',
+              currentRecipient === 'student'
+                ? 'bg-white text-emerald-800 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 active:bg-slate-200/60',
+            )}
+          >
+            <span>🎓 শিক্ষার্থী</span>
+            <span className="tabular text-[11px] opacity-75 font-normal">({s.studentPhone})</span>
+          </button>
+        </div>
+      )}
 
       {items.length > 0 && (
         <div className="rounded-2xl bg-rose-50/70 px-4 py-3">
@@ -153,13 +199,38 @@ function Body({ list }) {
         )}
       </div>
 
-      <Button as="a" href={waLink(s.guardianPhone, message)} target="_blank" rel="noopener noreferrer" onClick={markSent} variant="success" size="lg" block>
+      <Button
+        as="a"
+        href={targetPhone ? waLink(targetPhone, message) : undefined}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          if (!targetPhone) {
+            e.preventDefault();
+            return;
+          }
+          markSent();
+        }}
+        disabled={!targetPhone}
+        variant="success"
+        size="lg"
+        block
+      >
         <WhatsAppIcon className="h-5 w-5" />
-        {sent.has(s.id) ? 'আবার পাঠান' : 'WhatsApp-এ পাঠান'}
+        {sent.has(s.id)
+          ? 'আবার পাঠান'
+          : currentRecipient === 'student'
+          ? 'শিক্ষার্থীকে WhatsApp-এ পাঠান'
+          : 'অভিভাবককে WhatsApp-এ পাঠান'}
       </Button>
       <p className="text-center text-[12px] leading-relaxed text-slate-400">
         WhatsApp খুলবে, মেসেজ তৈরি থাকবে — শুধু Send চাপুন।
-        {multi && ' পাঠানোর পর পরের অভিভাবক আপনাআপনি আসবে।'}
+        {hasGuardian && hasStudent && (
+          <span className="block mt-0.5 text-slate-500 font-medium">
+            অভিভাবকের WhatsApp না থাকলে উপরে "🎓 শিক্ষার্থী" নির্বাচন করুন।
+          </span>
+        )}
+        {multi && ' পাঠানোর পর পরের জন আপনাআপনি আসবে।'}
       </p>
     </div>
   );

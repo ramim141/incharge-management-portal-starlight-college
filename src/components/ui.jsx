@@ -106,33 +106,53 @@ export function Avatar({ src, name = '', seed, size = 44, className, rounded = '
   );
 }
 
-/** Class setting "বেতন শুরুর মাস": months before it were collected with admission */
-export function FeeStartSelect({ value, onChange }) {
+/**
+ * Month selector for session start and end months (শুরু ও শেষ মাস).
+ * Spans from previous year to 3 years in future (e.g. 2025 through 2029)
+ * so principals can easily create next year / future sessions.
+ */
+export function FeeMonthSelect({ value, onChange, placeholder = 'মাস নির্বাচন করুন', className = '' }) {
   const now = new Date();
-  const curIdx = ACADEMIC_MONTHS.indexOf(EN_MONTHS[now.getMonth()]);
-  const sessionStart = curIdx <= 5 ? now.getFullYear() : now.getFullYear() - 1;
-  // Previous session too (from July a year back), so a class can start earlier to carry arrears
-  const options = [sessionStart - 1, sessionStart].flatMap((s) =>
-    ACADEMIC_MONTHS.map((m, i) => {
-      const y = i <= 5 ? s : s + 1;
-      return { value: `${y}-${String(EN_MONTHS.indexOf(m) + 1).padStart(2, '0')}`, label: `${BN_MONTHS[EN_MONTHS.indexOf(m)]} ${y}` };
+  const currentYear = now.getFullYear();
+  const years = [currentYear - 1, currentYear, currentYear + 1, currentYear + 2, currentYear + 3];
+  const options = years.flatMap((y) =>
+    Array.from({ length: 12 }, (_, i) => {
+      const monthNum = i + 1;
+      const period = `${y}-${String(monthNum).padStart(2, '0')}`;
+      return {
+        value: period,
+        label: `${BN_MONTHS[i]} ${y}`,
+      };
     }),
   );
-  if (value && !options.some((o) => o.value === value)) options.unshift({ value, label: value });
+  if (value && !options.some((o) => o.value === value)) {
+    const [y, m] = value.split('-').map(Number);
+    const bnName = m >= 1 && m <= 12 ? BN_MONTHS[m - 1] : '';
+    options.unshift({ value, label: bnName ? `${bnName} ${y}` : value });
+  }
+
   return (
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
-      className="h-12 w-full rounded-2xl bg-slate-100/80 px-4 text-[16px] font-medium text-ink outline-none focus:bg-white focus:ring-2 focus:ring-brand-500"
+      className={cx(
+        'h-11 w-full rounded-xl border border-slate-200/90 bg-white px-3 text-[15px] sm:text-[14px] font-semibold text-ink shadow-xs outline-none transition hover:border-slate-300 focus:border-brand-600 focus:ring-3 focus:ring-brand-500/15',
+        className,
+      )}
     >
-      <option value="">শুরু থেকেই (ভর্তির মাস থেকে)</option>
+      <option value="">{placeholder}</option>
       {options.map((o) => (
         <option key={o.value} value={o.value}>
-          {o.label} থেকে
+          {o.label}
         </option>
       ))}
     </select>
   );
+}
+
+/** Backward-compatible FeeStartSelect wrapper */
+export function FeeStartSelect({ value, onChange, placeholder = 'শুরুর মাস...' }) {
+  return <FeeMonthSelect value={value} onChange={onChange} placeholder={placeholder} />;
 }
 
 /** Tick box shown when adding students: the admission-month fee was already collected */
@@ -279,27 +299,27 @@ export function SectionTitle({ title, hint, action }) {
 export function Field({ label, hint, error, children, className }) {
   return (
     <label className={cx('block', className)}>
-      {label && <span className="mb-1.5 block text-[13.5px] font-semibold text-slate-700">{label}</span>}
+      {label && <span className="mb-1.5 block text-[13px] font-bold text-slate-700 tracking-tight">{label}</span>}
       {children}
       {error ? (
-        <span className="mt-1 block text-[12.5px] font-medium text-rose-600">{error}</span>
+        <span className="mt-1 block text-[12px] font-semibold text-rose-600">{error}</span>
       ) : hint ? (
-        <span className="mt-1 block text-[12.5px] text-slate-500">{hint}</span>
+        <span className="mt-1 block text-[12px] text-slate-500">{hint}</span>
       ) : null}
     </label>
   );
 }
 
-// 16px font prevents iOS from zooming into inputs
+// 16px font prevents iOS from zooming into inputs; responsive 15px on desktop
 export const inputCls =
-  'w-full h-12 px-4 rounded-2xl bg-slate-100/80 text-[16px] font-medium text-ink placeholder:text-slate-400 outline-none transition focus:bg-white focus:ring-2 focus:ring-brand-500';
+  'w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200/90 text-[16px] sm:text-[15px] font-medium text-ink placeholder:text-slate-400 shadow-xs outline-none transition hover:border-slate-300 focus:border-brand-600 focus:ring-3 focus:ring-brand-500/15 disabled:bg-slate-50 disabled:text-slate-400';
 
 export const Input = React.forwardRef(function Input({ className, ...rest }, ref) {
   return <input ref={ref} {...rest} className={cx(inputCls, className)} />;
 });
 
 export function Textarea({ className, ...rest }) {
-  return <textarea {...rest} className={cx(inputCls, 'h-auto py-3 leading-relaxed', className)} />;
+  return <textarea {...rest} className={cx(inputCls, 'h-auto py-2.5 leading-relaxed', className)} />;
 }
 
 export function SearchBar({ value, onChange, placeholder = 'খুঁজুন…', className, autoFocus, inputMode }) {
@@ -521,20 +541,28 @@ export function MultiSelectPill({ value, onChange, options, label, allLabel, cla
 
 export function Segmented({ options, value, onChange, className }) {
   return (
-    <div className={cx('grid gap-1 rounded-2xl bg-slate-200/60 p-1', className)} style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={cx(
-            'h-10 rounded-xl text-[14px] font-semibold transition',
-            o.value === value ? 'bg-white text-ink shadow-card' : 'text-slate-500',
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div
+      className={cx('grid gap-1 rounded-xl bg-slate-100 p-1 border border-slate-200/60', className)}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0,1fr))` }}
+    >
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={cx(
+              'h-9 rounded-lg text-[13px] sm:text-[13.5px] font-semibold transition press truncate px-2',
+              active
+                ? 'bg-white text-brand-700 shadow-xs font-bold border border-black/[0.04]'
+                : 'text-slate-600 hover:text-ink hover:bg-white/40',
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -613,8 +641,13 @@ function SheetInner({ onClose, title, subtitle, children, footer, full, headerRi
   const [z] = useState(() => 60 + ++zSeed);
   const [dragY, setDragY] = useState(0);
   const startY = useRef(null);
+  const scrollRef = useRef(null);
 
   useBackHandler(!closing, onClose);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [title]);
 
   useEffect(() => {
     openSheets += 1;
@@ -660,7 +693,7 @@ function SheetInner({ onClose, title, subtitle, children, footer, full, headerRi
             <div className={cx('h-1.5 w-10 rounded-full', tone ? 'bg-white/40' : 'bg-slate-200')} />
           </div>
           {(title || headerRight) && (
-            <div className="flex items-start gap-3 px-5 pb-3 pt-1">
+            <div className="flex items-start gap-3 border-b border-slate-100 px-5 pb-3 pt-1">
               <div className="min-w-0 flex-1">
                 {title && <h2 className={cx('text-[19px] font-extrabold leading-snug', tone ? 'text-white' : 'text-ink')}>{title}</h2>}
                 {subtitle && <p className={cx('text-[13.5px]', tone ? 'text-white/75' : 'text-slate-500')}>{subtitle}</p>}
@@ -677,7 +710,7 @@ function SheetInner({ onClose, title, subtitle, children, footer, full, headerRi
             </div>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-5">{children}</div>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-5 sm:px-5">{children}</div>
         {footer && (
           <div className="no-print shrink-0 border-t border-slate-100 bg-white px-5 pt-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
             {footer}

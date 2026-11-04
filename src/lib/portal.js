@@ -1,9 +1,23 @@
 import { groupBn, sectionBn, genderBn } from './format';
 import { leavesForPortal } from './leave';
+import { queriesForPortal } from './query';
 
 // What a student is allowed to see about themself. This record is stored under a key
 // derived from Student ID + PIN; it deliberately leaves out the PIN, fee reasons and admin notes.
-export function buildPortalSnapshot({ student: s, fees, examFees, fines, payments, attendance, settings, attStats, totalDue, leaves = [], notices = [] }) {
+export function buildPortalSnapshot({
+  student: s,
+  fees,
+  examFees,
+  fines,
+  payments,
+  attendance,
+  settings,
+  attStats,
+  totalDue,
+  leaves = [],
+  notices = [],
+  queries = [],
+}) {
   const attLog = Object.keys(attendance)
     .filter((d) => attendance[d]?.[s.id])
     .sort()
@@ -13,6 +27,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
 
   return {
     v: 1,
+    classId: settings.classCode || '',
     student: {
       id: s.id,
       name: s.name,
@@ -28,6 +43,7 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
       fatherName: s.fatherName || '',
       motherName: s.motherName || '',
       guardianPhone: s.guardianPhone || '',
+      studentPhone: s.studentPhone || '',
       address: s.address || '',
       admissionDate: s.admissionDate || '',
       monthlyFee: s.monthlyFee || 0,
@@ -43,18 +59,52 @@ export function buildPortalSnapshot({ student: s, fees, examFees, fines, payment
     },
     fees: fees
       .filter((f) => f.studentId === s.id)
-      .map(({ id, studentId, month, year, amount, fine, fineWaived, paid, due, status, deadline, beforeStart }) => ({ id, studentId, month, year, amount, fine: fine || 0, fineWaived: fineWaived || 0, paid: paid || 0, due, status, deadline: deadline || '', beforeStart: !!beforeStart })),
+      .map(({ id, studentId, month, year, amount, fine, fineWaived, paid, due, status, deadline, beforeStart }) => ({
+        id,
+        studentId,
+        month,
+        year,
+        amount,
+        fine: fine || 0,
+        fineWaived: fineWaived || 0,
+        paid: paid || 0,
+        due,
+        status,
+        deadline: deadline || '',
+        beforeStart: !!beforeStart,
+      })),
     exams: examFees
       .filter((e) => e.studentId === s.id)
-      .map(({ id, studentId, examName, amount, paid, due, status, paymentDate, deadline }) => ({ id, studentId, examName, amount, paid: paid || 0, due: due || 0, status, paymentDate: paymentDate || null, deadline: deadline || '' })),
+      .map(({ id, studentId, examName, amount, paid, due, status, paymentDate, deadline }) => ({
+        id,
+        studentId,
+        examName,
+        amount,
+        paid: paid || 0,
+        due: due || 0,
+        status,
+        paymentDate: paymentDate || null,
+        deadline: deadline || '',
+      })),
     fines: fines
       .filter((f) => f.studentId === s.id)
-      .map(({ id, studentId, amount, waived, paid, due, reason, date, status }) => ({ id, studentId, amount, waived: waived || 0, paid: paid || 0, due: due || 0, reason, date, status })),
+      .map(({ id, studentId, amount, waived, paid, due, reason, date, status }) => ({
+        id,
+        studentId,
+        amount,
+        waived: waived || 0,
+        paid: paid || 0,
+        due: due || 0,
+        reason,
+        date,
+        status,
+      })),
     payments: payments.filter((p) => p.studentId === s.id),
     att: attStats,
     attLog,
     totalDue,
     leaves: leavesForPortal(leaves, s.id),
     notices,
+    queries: queriesForPortal(queries, s.id),
   };
 }

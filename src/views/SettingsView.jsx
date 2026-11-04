@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import {
-  School, Wallet, MessageSquareText, Database, HardDriveDownload, BellRing, ChevronDown, Save, Layers, Plus, X,
+  School, Wallet, MessageSquareText, Database, HardDriveDownload, BellRing, ChevronDown, Save, Layers, Plus, X, CheckCheck,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
-import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, FeeStartSelect, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
+import { PageHeader, Card, Field, Input, Textarea, Button, Badge, Segmented, FeeMonthSelect, cx, DOCK, DOCK_BOTTOM } from '../components/ui';
 import { BackupPanel } from '../components/BackupPanel';
 import { NotifySettings } from '../components/NotifySettings';
+import { addMonthsPeriod, feeStartLabel } from '../lib/classLogic';
 
 const VARS = [
   'student_name', 'roll', 'fee_summary', 'fee_breakdown', 'total_due',
   'month', 'monthly_fee', 'deadline', 'incharge_name', 'incharge_phone',
   'class_name', 'portal_link',
 ];
-const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'feeStartMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
+const EDITABLE = ['inchargeName', 'inchargeDesignation', 'inchargePhone', 'defaultMonthlyFee', 'defaultFeeDeadlineDay', 'fixedFineAfterDeadline', 'absentFine', 'feeStartMonth', 'feeEndMonth', 'departments', 'sections', 'useGender', 'whatsappTemplate'];
 const pick = (o) => Object.fromEntries(EDITABLE.map((k) => [k, o[k] ?? '']));
 
 export const SettingsView = () => {
@@ -90,9 +91,40 @@ export const SettingsView = () => {
               <Input type="number" inputMode="numeric" min={0} value={form.absentFine} onChange={set('absentFine', true)} />
             </Field>
           </div>
-          <Field label="বেতন শুরুর মাস" hint="এর আগের মাসের বেতন ভর্তির সময় নেওয়া হয়েছে — সেগুলো বাকি দেখাবে না, আদায়ও করা যাবে না">
-            <FeeStartSelect value={form.feeStartMonth} onChange={(v) => setForm((x) => ({ ...x, feeStartMonth: v }))} />
-          </Field>
+          <div className="mt-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[13.5px] font-bold text-ink">শিক্ষাবর্ষ / সেশনের বেতন মাস</p>
+              <Badge tone="blue">শুরু ও শেষ মাস</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="বেতন শুরুর মাস (ভর্তি শুরু)">
+                <FeeMonthSelect
+                  value={form.feeStartMonth}
+                  onChange={(v) => {
+                    setForm((x) => ({
+                      ...x,
+                      feeStartMonth: v,
+                      feeEndMonth: v && (!x.feeEndMonth || x.feeEndMonth === addMonthsPeriod(x.feeStartMonth, 11)) ? addMonthsPeriod(v, 11) : x.feeEndMonth,
+                    }));
+                  }}
+                  placeholder="শুরুর মাস..."
+                />
+              </Field>
+              <Field label="বেতন শেষ মাস (সেশন শেষ)">
+                <FeeMonthSelect
+                  value={form.feeEndMonth}
+                  onChange={(v) => setForm((x) => ({ ...x, feeEndMonth: v }))}
+                  placeholder="শেষ মাস..."
+                />
+              </Field>
+            </div>
+            <div className="flex items-start gap-2.5 rounded-xl bg-blue-50/90 p-2.5 text-[12.5px] text-blue-800 ring-1 ring-inset ring-blue-200/70">
+              <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+              <p className="leading-snug">
+                বেতন শুরুর মাস <strong>({form.feeStartMonth ? feeStartLabel(form.feeStartMonth) : 'শুরুর মাস'})</strong> থেকে শিক্ষার্থীদের নিয়মিত মাসিক বেতন প্রযোজ্য হবে। এর পূর্ববর্তী মাসগুলো সেশন শুরুর পূর্বের মাস হিসেবে গণ্য হবে।
+              </p>
+            </div>
+          </div>
           <p className="text-[12.5px] text-slate-500">চলতি মাস তারিখ দেখে আপনাআপনি ঠিক হয়। নতুন মাসের বেতন "মাসিক বেতন" পাতা থেকে তৈরি করুন।</p>
           <p className="text-[12.5px] text-slate-500">
             হাজিরায় অনুপস্থিত দিলে প্রতিদিন এই জরিমানা হবে। কোনো শিক্ষার্থীর আলাদা হার দিতে তার তথ্য এডিট করুন; 0 দিলে অনুপস্থিতি জরিমানা বন্ধ থাকবে।

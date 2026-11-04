@@ -44,7 +44,7 @@ function PaymentBody({ initialStudent }) {
         return {
           key: keyOf(m, y), month: m, year: y, row, transport: trOf(row, due),
           due,
-          paid: row ? feeStatus(row) === 'Paid' : false,
+          paid: row ? (row.atAdmission || feeStatus(row) === 'Paid') : false,
           future: period > curPeriod,
           past: period < curPeriod,
           current: period === curPeriod,
@@ -266,7 +266,7 @@ function PaymentBody({ initialStudent }) {
                   {repeated.has(m.month) && <span className="tabular text-[11.5px] font-semibold opacity-70"> {String(m.year).slice(2)}</span>}
                 </span>
                 <span className={cx('tabular block text-[11.5px]', on ? 'text-white/80' : 'text-slate-500')}>
-                  {m.beforeStart ? '✓ ভর্তির সময়' : m.paid ? '✓ পরিশোধিত' : `${m.due - m.transport > 0 ? taka(m.due - m.transport) : `পরিবহন ${taka(m.transport)}`}${m.row?.fine ? '*' : ''}`}
+                  {m.row?.atAdmission || m.beforeStart ? '✓ ভর্তির সময় (বেতন হয়ে গেছে)' : m.paid ? '✓ পরিশোধিত' : `${m.due - m.transport > 0 ? taka(m.due - m.transport) : `পরিবহন ${taka(m.transport)}`}${m.row?.fine ? '*' : ''}`}
                 </span>
                 {!m.paid && !on && m.row && (m.past || m.current || Number(m.row.paid) > 0) && (
                   <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />

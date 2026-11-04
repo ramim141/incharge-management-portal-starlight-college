@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, CheckCheck, Save, Hand, Gavel, Info, UserCheck } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Check, CheckCheck, Save, Hand, Gavel, Info, UserCheck, CheckCircle2 } from 'lucide-react';
 import { RollCall } from '../components/RollCall';
 import { leaveDefaultsFor } from '../lib/leave';
 import { useApp } from '../context/AppContext';
@@ -7,6 +7,7 @@ import { useUI } from '../context/UIContext';
 import { PageHeader, Segmented, FilterButton, Card, RollBadge, Badge, Button, IconButton, Checkbox, Progress, Sheet, cx } from '../components/ui';
 import { WhatsAppIcon } from '../components/ReceiptSheet';
 import { AbsenteeSheet } from '../components/AbsenteeSheet';
+import { MonthlyAttendanceSheet } from '../components/MonthlyAttendanceSheet';
 import { ATT_STATUS, ATT_ORDER, todayISO, shiftISODate, fmtDate, dayNameBn, taka } from '../lib/format';
 import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
@@ -67,8 +68,19 @@ function AttendanceHelp({ open, onClose, fine }) {
 }
 
 export const AttendanceView = () => {
-  const { students, attendance, leaves, saveAttendanceRecord, getStudentAttendanceStats, settings, absenceFineFor } = useApp();
+  const { students, attendance, leaves, saveAttendanceRecord, getStudentAttendanceStats, settings, absenceFineFor, classId } = useApp();
   const { toast, openStudent, confirm } = useUI();
+
+  const [waTick, setWaTick] = useState(0);
+  useEffect(() => {
+    const handleUpdate = () => setWaTick((t) => t + 1);
+    window.addEventListener('absent_wa_sent_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('absent_wa_sent_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const [tab, setTab] = useState('sheet');
   const [date, setDate] = useState(todayISO());
@@ -98,6 +110,18 @@ export const AttendanceView = () => {
     () => active.filter((s) => (records[s.id] || 'Present') === 'Absent'),
     [active, records],
   );
+
+  const isAbsentMsgDone = useMemo(() => {
+    if (!absentees.length) return false;
+    let sentSet = new Set();
+    try {
+      const stored = localStorage.getItem(`absent_wa_sent_${classId || 'default'}_${date}`);
+      if (stored) sentSet = new Set(JSON.parse(stored));
+    } catch {}
+    const reachable = absentees.filter((s) => s.guardianPhone || s.studentPhone);
+    return reachable.length === 0 || reachable.every((s) => sentSet.has(s.id));
+  }, [absentees, classId, date, waTick]);
+
   const list = active.filter((s) => matchStudentFilter(s, filters));
   const saved = !!attendance[date];
 
@@ -178,7 +202,7 @@ export const AttendanceView = () => {
       <AttendanceHelp open={help} onClose={() => setHelp(false)} fine={hasAbsentFine ? settings.absentFine : null} />
       <PageHeader
         title="হাজিরা"
-        subtitle={tab === 'sheet' ? `${counts.Present + counts.Late}/${list.length} উপস্থিত · ${rate}%` : undefined}
+        subtitle={tab === 'sheet' ? `${counts.Present + counts.Late}/${list.length} উপস্থিত · ${rate}%` : tab === 'download' ? 'মাসিক হাজিরা শিট ও PDF ডাউনলোড' : undefined}
         actions={
           <>
             {tab === 'sheet' && (
@@ -196,6 +220,7 @@ export const AttendanceView = () => {
           options={[
             { value: 'sheet', label: 'হাজিরা খাতা' },
             { value: 'summary', label: 'সারসংক্ষেপ' },
+            { value: 'download', label: 'ডাউনলোড' },
           ]}
         />
       </PageHeader>
@@ -254,10 +279,24 @@ export const AttendanceView = () => {
             <button
               type="button"
               onClick={() => setAbsentSheetOpen(true)}
-              className="press mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-rose-50 text-[12.5px] font-bold text-rose-700"
+              className={cx(
+                'press mt-2.5 flex h-10 w-full items-center justify-center gap-2 rounded-xl text-[12.5px] font-bold transition shadow-xs',
+                isAbsentMsgDone
+                  ? 'border border-emerald-200/90 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+              )}
             >
-              <WhatsAppIcon className="h-4 w-4" />
-              অনুপস্থিত {counts.Absent} জনের অভিভাবককে WhatsApp
+              {isAbsentMsgDone ? (
+                <>
+                  <Check className="h-4 w-4 text-emerald-600" />
+                  <span>মেসেজ পাঠানো সম্পন্ন</span>
+                </>
+              ) : (
+                <>
+                  <WhatsAppIcon className="h-4 w-4" />
+                  <span>অনুপস্থিত {counts.Absent} জনের অভিভাবককে WhatsApp</span>
+                </>
+              )}
             </button>
           )}
 
@@ -265,10 +304,24 @@ export const AttendanceView = () => {
             type="button"
             disabled={!list.length}
             onClick={() => setRc(0)}
-            className="press mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-brand-600 text-[13.5px] font-bold text-white shadow-lift disabled:opacity-40"
+            className={cx(
+              'press mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13.5px] font-bold text-white shadow-lift transition disabled:opacity-40',
+              saved && !dirty
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-brand-600 hover:bg-brand-700'
+            )}
           >
-            <UserCheck className="h-4 w-4" />
-            একজন একজন করে হাজিরা নিন
+            {saved && !dirty ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{isToday ? 'আজকের হাজিরা নেওয়া সম্পন্ন' : 'হাজিরা নেওয়া সম্পন্ন'}</span>
+              </>
+            ) : (
+              <>
+                <UserCheck className="h-4 w-4" />
+                <span>একজন একজন করে হাজিরা নিন</span>
+              </>
+            )}
           </button>
 
           {/* Quick actions */}
@@ -341,6 +394,7 @@ export const AttendanceView = () => {
               onStep={setRc}
               onSave={() => save()}
               onWhatsApp={() => setAbsentSheetOpen(true)}
+              isAbsentMsgDone={isAbsentMsgDone}
               onClose={() => setRc(null)}
             />
           )}
@@ -352,6 +406,13 @@ export const AttendanceView = () => {
             absentStudents={absentees}
           />
         </>
+      ) : tab === 'download' ? (
+        <MonthlyAttendanceSheet
+          students={active}
+          attendance={attendance}
+          settings={settings}
+          onOpenStudent={openStudent}
+        />
       ) : (
         <Summary students={active} getStats={getStudentAttendanceStats} onOpen={openStudent} />
       )}

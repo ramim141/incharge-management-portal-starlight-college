@@ -6,12 +6,13 @@ import {
 } from 'lucide-react';
 import { AppContext, useApp, normalizeFine, studentIdFor } from '../context/AppContext';
 import { CLASS_INDEX_PATH } from '../lib/classIndex';
-import { feeStartLabel } from '../lib/classLogic';
+import { feeStartLabel, isXIClass, ADMISSION_NOTE } from '../lib/classLogic';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
-import { LeaveCard, useSentLeaves } from '../components/PortalExtras';
+import { LeaveCard, useSentLeaves, QueryCard, useSentQueries, ChangePinSheet, FloatingMessenger } from '../components/PortalExtras';
+import { StatementDownloadButton } from '../components/PortalStatement';
 import { NoticeBoard } from '../components/NoticeBoard';
 import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
 import {
@@ -265,8 +266,15 @@ function LoginCard({ onSuccess }) {
 /** Feeds the read-only portal record to the same profile + receipt screens staff use */
 function PortalSession({ snap: first, onExit }) {
   // The record is kept up to date by the in-charge's app: follow it, so a leave decision or a new notice shows without logging in again
+  const [currentKey, setCurrentKey] = useState(first.id);
   const [snap, setSnap] = useState(first);
-  useEffect(() => backend.subscribeDoc(['portal', first.id], (d) => d && setSnap(d)), [first.id]);
+
+  useEffect(() => backend.subscribeDoc(['portal', currentKey], (d) => d && setSnap(d)), [currentKey]);
+
+  const handlePinChanged = (newKey) => {
+    setCurrentKey(newKey);
+    setSnap((prev) => ({ ...prev, id: newKey }));
+  };
   const value = useMemo(() => {
     const s = snap.student;
     const now = new Date();
@@ -295,7 +303,7 @@ function PortalSession({ snap: first, onExit }) {
 
   return (
     <AppContext.Provider value={value}>
-      <StudentProfile student={snap.student} snap={snap} onExit={onExit} />
+      <StudentProfile student={snap.student} snap={snap} onExit={onExit} onPinChanged={handlePinChanged} />
       <ReceiptSheet />
     </AppContext.Provider>
   );
@@ -309,11 +317,13 @@ const TABS = [
   { id: 'receipts', label: 'রশিদ', icon: ReceiptText },
 ];
 
-function StudentProfile({ student: s, snap, onExit }) {
+function StudentProfile({ student: s, snap, onExit, onPinChanged }) {
   const { fees, examFees, fines, payments, attendance, settings, getStudentAttendanceStats } = useApp();
   const { openReceipt } = useUI();
   const [tab, setTab] = useState('home');
+  const [pinSheetOpen, setPinSheetOpen] = useState(false);
   const sent = useSentLeaves();
+  const sentQueries = useSentQueries();
 
   const att = getStudentAttendanceStats(s.id);
   const sFees = useMemo(
@@ -363,7 +373,18 @@ function StudentProfile({ student: s, snap, onExit }) {
             <div className="flex items-center gap-2 text-[15px] font-bold text-ink">
               <Logo size={32} /> আমার প্রোফাইল
             </div>
-            <Button variant="secondary" size="sm" icon={LogOut} onClick={onExit} aria-label="বের হও" title="বের হও" className="w-10 px-0" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPinSheetOpen(true)}
+                className="press inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-[12.5px] font-bold text-slate-700 shadow-card ring-1 ring-slate-200"
+                title="পিন পরিবর্তন"
+              >
+                <KeyRound className="h-4 w-4 text-brand-600" />
+                <span>পিন পরিবর্তন</span>
+              </button>
+              <Button variant="secondary" size="sm" icon={LogOut} onClick={onExit} aria-label="বের হও" title="বের হও" className="w-10 px-0" />
+            </div>
           </div>
         </div>
 
@@ -389,7 +410,22 @@ function StudentProfile({ student: s, snap, onExit }) {
                 <p className="relative mt-4 truncate border-t border-white/15 pt-3 text-[12.5px] text-white/75">{settings.sectionName}</p>
               </div>
 
+              {/* Quick actions: Statement PDF download & Change PIN */}
+              <div className="no-print grid grid-cols-2 gap-2.5">
+                <StatementDownloadButton snap={snap} />
+                <button
+                  type="button"
+                  onClick={() => setPinSheetOpen(true)}
+                  className="press flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-[13.5px] font-bold text-slate-700 shadow-card ring-1 ring-slate-200 transition hover:bg-slate-50"
+                >
+                  <KeyRound className="h-4 w-4 text-amber-600" />
+                  <span>পিন পরিবর্তন</span>
+                </button>
+              </div>
+
               <NoticeBoard notices={snap.notices} />
+
+              <QueryCard snap={snap} sent={sentQueries} />
 
               <LeaveCard snap={snap} sent={sent} />
 
@@ -457,6 +493,7 @@ function StudentProfile({ student: s, snap, onExit }) {
                   <InfoRow icon={UserRound} label="পিতার নাম" value={s.fatherName} />
                   <InfoRow icon={Users} label="মাতার নাম" value={s.motherName} />
                   <InfoRow icon={Phone} label="অভিভাবকের ফোন" value={s.guardianPhone} mono />
+                  {s.studentPhone && <InfoRow icon={Phone} label="শিক্ষার্থীর ফোন" value={s.studentPhone} mono />}
                   <InfoRow icon={MapPin} label="ঠিকানা" value={s.address} />
                 </div>
               </Card>
@@ -476,9 +513,12 @@ function StudentProfile({ student: s, snap, onExit }) {
 
           {tab === 'fees' && (
             <>
+              <div className="no-print mb-2.5">
+                <StatementDownloadButton snap={snap} className="w-full" />
+              </div>
               <Card className="p-5">
                 <p className="mb-2 text-[16px] font-bold text-ink">মাসিক বেতন</p>
-                {settings.feeStartMonth && (
+                {settings.feeStartMonth && !isXIClass(settings) && !isXIClass(snap?.classId) && !isXIClass(snap?.cls) && !isXIClass(s?.studentId) && (
                   <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">
                     ✓ {feeStartLabel(settings.feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে
                   </p>
@@ -503,7 +543,7 @@ function StudentProfile({ student: s, snap, onExit }) {
                             </p>
                           </div>
                           {paid ? (
-                            <Badge tone="green">{f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
+                            <Badge tone="green">{f.atAdmission || f.note === ADMISSION_NOTE ? 'বেতন হয়ে গেছে (ভর্তির সময়)' : f.beforeStart ? 'ভর্তির সময় নেওয়া' : 'পরিশোধিত'}</Badge>
                           ) : (
                             <div className="text-right">
                               <Badge tone="red">বাকি</Badge>
@@ -607,6 +647,16 @@ function StudentProfile({ student: s, snap, onExit }) {
           )}
         </div>
       </div>
+      <FloatingMessenger snap={snap} sent={sentQueries} />
+      <ChangePinSheet
+        snap={snap}
+        open={pinSheetOpen}
+        onClose={() => setPinSheetOpen(false)}
+        onPinChanged={(newKey) => {
+          onPinChanged?.(newKey);
+          setPinSheetOpen(false);
+        }}
+      />
       {/* Bottom tab bar — within thumb reach */}
       <nav
         className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/70 bg-white/95 backdrop-blur-xl"

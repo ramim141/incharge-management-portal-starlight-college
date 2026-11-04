@@ -12,9 +12,10 @@ import { studentFilterGroups, matchStudentFilter } from '../lib/filters';
 
 export const DueStudentsView = () => {
   const { students, fees, fines, examFees, settings } = useApp();
-  const { openWhatsApp, openPayment, openStudent } = useUI();
+  const { openWhatsApp, openPayment, openStudent, toast } = useUI();
   const [monthsOpen, setMonthsOpen] = useState(false);
   const [q, setQ] = useState('');
+  const [callTarget, setCallTarget] = useState(null);
   const DEFAULTS = { due: 'all', group: 'All', section: 'All', gender: 'All' };
   const [filters, setFilters] = useState(DEFAULTS);
   const filter = filters.due;
@@ -57,7 +58,12 @@ export const DueStudentsView = () => {
     (s) =>
       (filter === 'all' || s.overdue) &&
       matchStudentFilter(s, filters) &&
-      (!t || String(s.roll).includes(t) || s.name.toLowerCase().includes(t) || (s.nameEn || '').toLowerCase().includes(t) || (s.guardianPhone || '').includes(t)),
+      (!t ||
+        String(s.roll).includes(t) ||
+        s.name.toLowerCase().includes(t) ||
+        (s.nameEn || '').toLowerCase().includes(t) ||
+        (s.guardianPhone || '').includes(t) ||
+        (s.studentPhone || '').includes(t)),
   );
 
   const total = dueList.reduce((a, s) => a + s.totalDue, 0);
@@ -124,7 +130,7 @@ export const DueStudentsView = () => {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15.5px] font-semibold text-ink">{s.name}</span>
                       <span className="tabular block text-[12.5px] text-slate-500">
-                        {s.guardianPhone}
+                        {[s.guardianPhone, s.studentPhone ? `ছাত্র: ${s.studentPhone}` : ''].filter(Boolean).join(' · ')}
                       </span>
                     </span>
                   </button>
@@ -154,9 +160,25 @@ export const DueStudentsView = () => {
                 )}
 
                 <div className="grid grid-cols-3 border-t border-slate-100">
-                  <a href={`tel:${s.guardianPhone}`} className="flex h-12 items-center justify-center gap-1.5 text-[14px] font-semibold text-slate-700 active:bg-slate-50">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hasG = Boolean(s.guardianPhone);
+                      const hasS = Boolean(s.studentPhone);
+                      if (hasG && hasS) {
+                        setCallTarget(s);
+                      } else if (hasG) {
+                        window.location.href = `tel:${s.guardianPhone}`;
+                      } else if (hasS) {
+                        window.location.href = `tel:${s.studentPhone}`;
+                      } else {
+                        toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                      }
+                    }}
+                    className="flex h-12 items-center justify-center gap-1.5 text-[14px] font-semibold text-slate-700 active:bg-slate-50"
+                  >
                     <Phone className="h-4 w-4" /> কল
-                  </a>
+                  </button>
                   <button type="button" onClick={() => openWhatsApp([s])} className="flex h-12 items-center justify-center gap-1.5 border-x border-slate-100 text-[14px] font-semibold text-emerald-600 active:bg-emerald-50">
                     <WhatsAppIcon className="h-4 w-4" /> রিমাইন্ডার
                   </button>
@@ -169,6 +191,68 @@ export const DueStudentsView = () => {
           })}
         </div>
       )}
+
+      {/* Call Target Picker Modal */}
+      <Sheet
+        open={!!callTarget}
+        onClose={() => setCallTarget(null)}
+        title="কাকে কল করবেন?"
+        subtitle={callTarget ? `${callTarget.name} · রোল ${callTarget.roll}` : ''}
+      >
+        {callTarget && (
+          <div className="space-y-3 pt-2">
+            <p className="text-[13px] text-slate-500 font-medium">কল করার জন্য নম্বর নির্বাচন করুন:</p>
+
+            {callTarget.guardianPhone && (
+              <a
+                href={`tel:${callTarget.guardianPhone}`}
+                onClick={() => setCallTarget(null)}
+                className="press flex items-center justify-between rounded-2xl border border-sky-200/80 bg-sky-50/70 p-3.5 hover:bg-sky-100/70 transition shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-sky-100 text-sky-700 text-[20px] shadow-xs">
+                    👨‍👦
+                  </span>
+                  <div>
+                    <span className="inline-block rounded-md bg-sky-200/70 px-1.5 py-0.2 text-[11px] font-bold text-sky-800">
+                      অভিভাবক
+                    </span>
+                    <p className="tabular text-[15px] font-bold text-sky-950 mt-0.5">{callTarget.guardianPhone}</p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1.5 rounded-xl bg-sky-600 px-3.5 py-2 text-[13px] font-bold text-white shadow-xs">
+                  <Phone className="h-4 w-4" />
+                  <span>কল দিন</span>
+                </span>
+              </a>
+            )}
+
+            {callTarget.studentPhone && (
+              <a
+                href={`tel:${callTarget.studentPhone}`}
+                onClick={() => setCallTarget(null)}
+                className="press flex items-center justify-between rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-3.5 hover:bg-emerald-100/70 transition shadow-xs"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-100 text-emerald-700 text-[20px] shadow-xs">
+                    🎓
+                  </span>
+                  <div>
+                    <span className="inline-block rounded-md bg-emerald-200/70 px-1.5 py-0.2 text-[11px] font-bold text-emerald-800">
+                      শিক্ষার্থী (Student)
+                    </span>
+                    <p className="tabular text-[15px] font-bold text-emerald-950 mt-0.5">{callTarget.studentPhone}</p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-[13px] font-bold text-white shadow-xs">
+                  <Phone className="h-4 w-4" />
+                  <span>কল দিন</span>
+                </span>
+              </a>
+            )}
+          </div>
+        )}
+      </Sheet>
 
       <ReasonSheet fee={reasonFee} onClose={() => setReasonFee(null)} />
       <MonthDuesSheet open={monthsOpen} onClose={() => setMonthsOpen(false)} />

@@ -13,7 +13,7 @@ import { WhatsAppIcon } from './ReceiptSheet';
 export function ReminderPanel({ list = [] }) {
   const { reminderQueue: q } = useApp();
   const { openWhatsApp } = useUI();
-  const everyone = list.filter((s) => s.guardianPhone);
+  const everyone = list.filter((s) => s.guardianPhone || s.studentPhone);
   const noPhone = list.length - everyone.length;
 
   const Row = ({ icon: Icon, tone, title, text, students }) => (

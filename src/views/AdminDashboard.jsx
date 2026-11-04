@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Bell, Search, UserPlus, CalendarCheck, TriangleAlert, ChartColumn, ArrowRight, ReceiptText, Users, Wallet,
-  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, CreditCard, Phone,
+  ChevronRight, ShieldAlert, BellRing, ClipboardList, CheckCircle2, CreditCard, Phone, Check, MessageSquareText, Send,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
@@ -11,17 +11,30 @@ import { AbsenteeSheet } from '../components/AbsenteeSheet';
 import { MonthHistory } from '../components/MonthHistory';
 import { MonthHero } from '../components/MonthHero';
 import { TodoCard } from '../components/TodoCard';
-import { taka, monthBn, fmtDate, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, waLink } from '../lib/format';
+import { taka, monthBn, fmtDate, fmtTime, dayNameBn, greetingBn, todayISO, studentTags, feeStatus, shiftISODate, waLink } from '../lib/format';
 
 export const AdminDashboard = () => {
   const {
     students, totalStudentsCount, activeStudentsCount, totalDueAcrossAll,
-    attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, profile,
+    attendance, payments, settings, fees, examFees, setActiveTab, getStudentAttendanceStats, profile, classId,
+    queries = [],
   } = useApp();
   const { openWhatsApp, openReceipt, openStudentForm, openDayClose } = useUI();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [absentSheetOpen, setAbsentSheetOpen] = useState(false);
+  const [replyingQuery, setReplyingQuery] = useState(null);
+
+  const [waTick, setWaTick] = useState(0);
+  useEffect(() => {
+    const handleUpdate = () => setWaTick((t) => t + 1);
+    window.addEventListener('absent_wa_sent_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('absent_wa_sent_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
 
   const today = todayISO();
   const dayOf = (p) => (p.paymentDate ? String(p.paymentDate).slice(0, 10) : '');
@@ -46,6 +59,17 @@ export const AdminDashboard = () => {
     return students.filter((s) => todayRecord[s.id] === 'Absent' && s.status !== 'inactive');
   }, [students, todayRecord]);
 
+  const isAbsentMsgDoneToday = useMemo(() => {
+    if (!absentStudentsToday.length) return false;
+    let sentSet = new Set();
+    try {
+      const stored = localStorage.getItem(`absent_wa_sent_${classId || 'default'}_${today}`);
+      if (stored) sentSet = new Set(JSON.parse(stored));
+    } catch {}
+    const reachable = absentStudentsToday.filter((s) => s.guardianPhone);
+    return reachable.length === 0 || reachable.every((s) => sentSet.has(s.id));
+  }, [absentStudentsToday, classId, today, waTick]);
+
   const monthFees = fees.filter((f) => f.month === settings.currentMonth && f.year === settings.currentYear);
   const overdueStudents = students.filter((s) => {
     const f = monthFees.find((x) => x.studentId === s.id);
@@ -64,7 +88,19 @@ export const AdminDashboard = () => {
   const tomorrow = shiftISODate(today, 1);
   const examTomorrow = [...new Set(examFees.filter((e) => e.status === 'Due' && e.deadline === tomorrow).map((e) => e.examName))];
 
+  const pendingQueries = useMemo(
+    () => (queries || []).filter((q) => q.status === 'pending').sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
+    [queries],
+  );
+
   const notifications = [
+    pendingQueries.length > 0 && {
+      id: 'queries', tone: 'brand', icon: MessageSquareText,
+      title: `${pendingQueries.length}টি নতুন শিক্ষার্থীর মেসেজ এসেছে`,
+      text: `${pendingQueries[0].studentName} (রোল ${pendingQueries[0].roll}): "${pendingQueries[0].message}"`,
+      action: () => window.dispatchEvent(new CustomEvent('open_teacher_messenger', { detail: { studentId: pendingQueries[0].studentId } })),
+      actionLabel: 'উত্তর দিন',
+    },
     overdueStudents.length > 0 && {
       id: 'overdue', tone: 'red', icon: TriangleAlert,
       title: `${overdueStudents.length} জন শিক্ষার্থী বেতনের সময়সীমা পার করেছে`,
@@ -137,6 +173,71 @@ export const AdminDashboard = () => {
           দিনের হিসাব
         </Button>
       </div>
+
+      {/* Student Queries / Messenger Notice */}
+      {pendingQueries.length > 0 && (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-brand-200/80 bg-gradient-to-br from-brand-50/90 via-indigo-50/50 to-white p-3.5 shadow-card">
+          <div className="flex items-center justify-between pb-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-600 to-indigo-600 text-white shadow-sm shadow-brand-600/30">
+                <MessageSquareText className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="flex items-center gap-1.5 text-[13px] font-bold text-slate-900">
+                  শিক্ষার্থীর মেসেজ
+                  <span className="inline-flex items-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10.5px] font-bold text-white shadow-xs">
+                    {pendingQueries.length}টি নতুন
+                  </span>
+                </p>
+                <p className="text-[11.5px] text-slate-500">মেসেঞ্জারের মাধ্যমে পাঠানো প্রশ্ন ও বার্তা</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open_teacher_messenger'))}
+              className="text-[12px] font-semibold text-brand-700 hover:text-brand-900 hover:underline"
+            >
+              সব দেখুন →
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {pendingQueries.slice(0, 3).map((q) => (
+              <div
+                key={q.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-white p-2.5 shadow-xs ring-1 ring-slate-100"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-[13px] font-bold text-ink">{q.studentName || 'শিক্ষার্থী'}</span>
+                    {q.roll != null && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-700">
+                        রোল {q.roll}
+                      </span>
+                    )}
+                    {q.subject && (
+                      <span className="truncate rounded bg-brand-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-brand-700">
+                        {q.subject}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 truncate text-[12px] text-slate-600">
+                    "{q.message}"
+                  </p>
+                </div>
+                <Button
+                  size="xs"
+                  variant="primary"
+                  className="shrink-0 font-bold"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open_teacher_messenger', { detail: { studentId: q.studentId } }))}
+                >
+                  উত্তর দিন
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-5">
       <div>
@@ -216,12 +317,14 @@ export const AdminDashboard = () => {
                 <Button
                   block
                   size="sm"
-                  variant="soft-danger"
-                  icon={WhatsAppIcon}
+                  variant={isAbsentMsgDoneToday ? 'soft-success' : 'soft-danger'}
+                  icon={isAbsentMsgDoneToday ? Check : WhatsAppIcon}
                   className="h-auto min-h-10 py-2.5 px-3 whitespace-normal text-center leading-snug"
                   onClick={() => setAbsentSheetOpen(true)}
                 >
-                  অনুপস্থিত {counts.Absent} জনকে WhatsApp নোটিফিকেশন পাঠান
+                  {isAbsentMsgDoneToday
+                    ? 'মেসেজ পাঠানো সম্পন্ন'
+                    : `অনুপস্থিত ${counts.Absent} জনকে WhatsApp নোটিফিকেশন পাঠান`}
                 </Button>
               </div>
             )}
@@ -338,6 +441,20 @@ export const AdminDashboard = () => {
           </div>
         )}
       </Sheet>
+
+      {/* Quick Reply Sheet for Teacher */}
+      {replyingQuery && (
+        <Sheet
+          open={!!replyingQuery}
+          onClose={() => setReplyingQuery(null)}
+          title="শিক্ষার্থীর প্রশ্নের উত্তর দিন"
+        >
+          <DashboardReplyForm
+            query={replyingQuery}
+            onDone={() => setReplyingQuery(null)}
+          />
+        </Sheet>
+      )}
     </div>
   );
 };
@@ -365,7 +482,8 @@ function SearchSheet({ open, onClose }) {
           s.name.toLowerCase().includes(t) ||
           (s.nameEn || '').toLowerCase().includes(t) ||
           (s.studentId || '').toLowerCase().includes(t) ||
-          (s.guardianPhone || '').includes(t),
+          (s.guardianPhone || '').includes(t) ||
+          (s.studentPhone || '').includes(t),
       )
       .slice(0, 30);
   }, [q, students]);
@@ -400,7 +518,7 @@ function SearchSheet({ open, onClose }) {
                     {s.name}
                   </p>
                   <p className="mt-0.5 truncate text-[12.5px] text-slate-500">
-                    {[studentTags(s), s.guardianPhone].filter(Boolean).join(' · ') || 'তথ্য নেই'}
+                    {[studentTags(s), s.guardianPhone || s.studentPhone].filter(Boolean).join(' · ') || 'তথ্য নেই'}
                   </p>
                 </div>
 
@@ -414,61 +532,134 @@ function SearchSheet({ open, onClose }) {
               </div>
 
               {/* Bottom action bar */}
-              <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClose();
-                    setTimeout(() => openPayment(s), 80);
-                  }}
-                  className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
-                >
-                  <CreditCard className="h-4 w-4" /> টাকা আদায়
-                </button>
+              {(() => {
+                const phone = s.guardianPhone || s.studentPhone;
+                return (
+                  <div className="flex items-center border-t border-slate-100 bg-slate-50/60 divide-x divide-slate-100">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                        setTimeout(() => openPayment(s), 80);
+                      }}
+                      className="press flex h-10 flex-1 items-center justify-center gap-1.5 text-[13.5px] font-bold text-emerald-700 hover:bg-emerald-50 active:bg-emerald-100 transition"
+                    >
+                      <CreditCard className="h-4 w-4" /> টাকা আদায়
+                    </button>
 
-                <a
-                  href={s.guardianPhone ? `tel:${s.guardianPhone}` : undefined}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!s.guardianPhone) {
-                      e.preventDefault();
-                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
-                    }
-                  }}
-                  title="কল করুন"
-                  className={cx(
-                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
-                    s.guardianPhone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
-                  )}
-                >
-                  <Phone className="h-[18px] w-[18px]" />
-                </a>
+                    <a
+                      href={phone ? `tel:${phone}` : undefined}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!phone) {
+                          e.preventDefault();
+                          toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                        }
+                      }}
+                      title={s.guardianPhone ? 'অভিভাবককে কল করুন' : 'শিক্ষার্থীকে কল করুন'}
+                      className={cx(
+                        'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                        phone ? 'text-sky-600 hover:bg-sky-50 active:bg-sky-100' : 'text-slate-300 pointer-events-none',
+                      )}
+                    >
+                      <Phone className="h-[18px] w-[18px]" />
+                    </a>
 
-                <a
-                  href={s.guardianPhone ? waLink(s.guardianPhone) : undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!s.guardianPhone) {
-                      e.preventDefault();
-                      toast('মোবাইল নম্বর দেওয়া নেই', 'error');
-                    }
-                  }}
-                  title="WhatsApp"
-                  className={cx(
-                    'press flex h-10 w-12 shrink-0 items-center justify-center transition',
-                    s.guardianPhone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
-                  )}
-                >
-                  <WhatsAppIcon className="h-[18px] w-[18px]" />
-                </a>
-              </div>
+                    <a
+                      href={phone ? waLink(phone) : undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!phone) {
+                          e.preventDefault();
+                          toast('মোবাইল নম্বর দেওয়া নেই', 'error');
+                        }
+                      }}
+                      title="WhatsApp"
+                      className={cx(
+                        'press flex h-10 w-12 shrink-0 items-center justify-center transition',
+                        phone ? 'text-emerald-600 hover:bg-emerald-50 active:bg-emerald-100' : 'text-slate-300 pointer-events-none',
+                      )}
+                    >
+                      <WhatsAppIcon className="h-[18px] w-[18px]" />
+                    </a>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
       </div>
     </Sheet>
+  );
+}
+
+function DashboardReplyForm({ query, onDone }) {
+  const { replyQuery } = useApp();
+  const { toast } = useUI();
+  const [text, setText] = useState(query.reply || '');
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) {
+      toast('উত্তরের বিবরণ লিখুন', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await replyQuery(query.id, text.trim());
+      toast('উত্তর সফলভাবে পাঠানো হয়েছে', 'success');
+      onDone();
+    } catch (err) {
+      toast(err?.message || 'উত্তর পাঠাতে ব্যর্থ হয়েছে', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="rounded-2xl bg-slate-50 p-3.5 ring-1 ring-slate-200/70">
+        <div className="flex items-center justify-between text-[12px] text-slate-500">
+          <span className="font-bold text-ink">
+            {query.studentName} {query.roll != null ? `(রোল: ${query.roll})` : ''}
+          </span>
+          <span>{query.createdAt ? fmtTime(query.createdAt) : ''}</span>
+        </div>
+        {query.subject && (
+          <p className="mt-1 text-[12px] font-bold text-brand-600">{query.subject}</p>
+        )}
+        <p className="mt-1.5 whitespace-pre-wrap text-[13.5px] leading-relaxed text-slate-700">
+          {query.message}
+        </p>
+      </div>
+
+      <div>
+        <label className="block text-[12.5px] font-bold text-slate-700">
+          আপনার উত্তর (শিক্ষার্থীর পোর্টালে সরাসরি দেখতে পাবে):
+        </label>
+        <textarea
+          rows={3}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="এখানে উত্তর লিখুন..."
+          className="mt-1.5 w-full rounded-2xl border border-slate-200 p-3 text-[14px] text-ink focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/20"
+          autoFocus
+        />
+      </div>
+
+      <div className="flex items-center justify-end gap-2 pt-2">
+        <Button variant="ghost" size="sm" type="button" onClick={onDone} disabled={busy}>
+          বাতিল
+        </Button>
+        <Button variant="primary" size="sm" type="submit" loading={busy}>
+          <Send className="mr-1.5 h-3.5 w-3.5" />
+          উত্তর পাঠান
+        </Button>
+      </div>
+    </form>
   );
 }

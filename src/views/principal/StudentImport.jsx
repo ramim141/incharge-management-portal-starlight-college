@@ -6,7 +6,7 @@ import { backend, errorText } from '../../backend';
 import { Button, Field, Input, Textarea, Badge, Segmented, PaidAtAdmission, cx } from '../../components/ui';
 import { EN_MONTHS, GENDERS, downloadCSV, todayISO, monthBn } from '../../lib/format';
 import { parseTable, planImport, buildImportOps, TEMPLATE_CSV } from '../../lib/studentImport';
-import { isBeforeFeeStart, feeStartLabel, admissionPaidDefault } from '../../lib/classLogic';
+import { isBeforeFeeStart, isAdmissionPaid, feeStartLabel, admissionPaidDefault } from '../../lib/classLogic';
 
 /** The whole institution's list at once; each student lands in their class */
 function ListImport({ classes, onDone }) {
@@ -51,7 +51,7 @@ function ListImport({ classes, onDone }) {
       );
       const planned = planImport(rows, { classes, existing, defaultClass });
       setResult(planned);
-      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth)));
+      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth, new Date(), g.cls)));
       setStep('preview');
     } catch (e) {
       toast(errorText(e), 'error');
@@ -174,7 +174,7 @@ function ListImport({ classes, onDone }) {
           // Before the fee start month (for every class in this list): admission month already paid
           const now = new Date();
           const starts = result.plan.map((g) => g.cls.settings?.feeStartMonth || '');
-          const allBefore = starts.length > 0 && starts.every((fs) => isBeforeFeeStart(EN_MONTHS[now.getMonth()], now.getFullYear(), fs));
+          const allBefore = starts.length > 0 && starts.every((fs) => isAdmissionPaid(EN_MONTHS[now.getMonth()], now.getFullYear(), fs, result.plan[i]?.cls));
           return (
             <PaidAtAdmission
               checked={paidAtAdmission}
@@ -277,7 +277,7 @@ const selectCls =
   'h-12 w-full rounded-2xl bg-slate-50 px-4 text-[16px] font-medium text-ink outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-500';
 
 const blankForm = (classCode) => ({
-  classCode, roll: '', name: '', nameEn: '', group: '', section: '', gender: '', phone: '', father: '', mother: '', address: '', pin: '',
+  classCode, roll: '', name: '', nameEn: '', group: '', section: '', gender: '', phone: '', studentPhone: '', father: '', mother: '', address: '', pin: '',
 });
 
 /** One student at a time; goes through the same checks and records as the list import */
@@ -287,7 +287,7 @@ function SingleStudentForm({ classes }) {
   const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : ''));
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : '', new Date(), classes[0]));
   const [last, setLast] = useState(null); // the student just added (to show their PIN)
   const [showPin, setShowPin] = useState(false);
   const set = (k) => (e) => {
@@ -302,7 +302,7 @@ function SingleStudentForm({ classes }) {
 
   const pickClass = (code) => {
     setF((x) => ({ ...blankForm(code), gender: x.gender }));
-    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth));
+    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth, new Date(), classes.find((c) => c.id === code)));
   };
 
   const save = async () => {
@@ -313,8 +313,8 @@ function SingleStudentForm({ classes }) {
     setBusy(true);
     try {
       const existing = { [cls.id]: await backend.getCollection(['classes', cls.id, 'students']) };
-      const header = ['class', 'roll', 'name', 'nameEn', 'department', 'section', 'gender', 'phone', 'father', 'mother', 'address', 'pin'];
-      const row = [cls.id, f.roll, f.name, f.nameEn, f.group, f.section, f.gender, f.phone, f.father, f.mother, f.address, f.pin];
+      const header = ['class', 'roll', 'name', 'nameEn', 'department', 'section', 'gender', 'phone', 'studentPhone', 'father', 'mother', 'address', 'pin'];
+      const row = [cls.id, f.roll, f.name, f.nameEn, f.group, f.section, f.gender, f.phone, f.studentPhone, f.father, f.mother, f.address, f.pin];
       const { plan, errors } = planImport([header, row], { classes, existing, defaultClass: cls.id });
       if (errors.length) throw Object.assign(new Error(errors[0].msg), { code: 'form' });
       if (plan[0]?.skipped.length) throw Object.assign(new Error(`রোল ${f.roll} এই ক্লাসে আগে থেকেই আছে`), { code: 'form' });
@@ -403,9 +403,14 @@ function SingleStudentForm({ classes }) {
         </Field>
       )}
 
-      <Field label="অভিভাবকের মোবাইল">
-        <Input type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="01XXXXXXXXX" />
-      </Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="অভিভাবকের মোবাইল">
+          <Input type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="01XXXXXXXXX" />
+        </Field>
+        <Field label="শিক্ষার্থীর নিজস্ব মোবাইল" hint="হোয়াটসঅ্যাপ মেসেজ পাঠানোর জন্য">
+          <Input type="tel" inputMode="tel" value={f.studentPhone} onChange={set('studentPhone')} placeholder="01XXXXXXXXX" />
+        </Field>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Field label="পিতার নাম">
           <Input value={f.father} onChange={set('father')} />
@@ -425,7 +430,7 @@ function SingleStudentForm({ classes }) {
         checked={paidAtAdmission}
         onChange={setPaidAtAdmission}
         month={monthBn(EN_MONTHS[new Date().getMonth()])}
-        beforeStart={!!cls && isBeforeFeeStart(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth)}
+        beforeStart={!!cls && isAdmissionPaid(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth, cls)}
         startLabel={feeStartLabel(cls?.settings?.feeStartMonth)}
       />
 

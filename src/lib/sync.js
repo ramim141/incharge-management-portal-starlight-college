@@ -12,8 +12,7 @@ export function describeSync({ online, pending, justSynced }) {
   if (!online) {
     return { kind: 'offline', text: pending > 0 ? `অফলাইন · ${pending}টি পরিবর্তন সেভ আছে, নেট এলে সিঙ্ক হবে` : 'অফলাইন · কাজ চলবে, নেট এলে সিঙ্ক হবে' };
   }
-  if (pending > 0) return { kind: 'syncing', text: `সিঙ্ক হচ্ছে… (${pending})` };
-  if (justSynced) return { kind: 'done', text: 'সব পরিবর্তন সিঙ্ক হয়েছে ✓' };
+  if (justSynced) return { kind: 'done', text: 'ইন্টারনেট সংযোগ ফিরে এসেছে ✓' };
   return { kind: null, text: '' };
 }
 
