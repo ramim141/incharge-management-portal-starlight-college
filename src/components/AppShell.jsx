@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { pushLayer } from '../lib/backstack';
 import { Sheet, Avatar, cx, CONTAINER, GUTTER } from './ui';
+import { TeacherFloatingMessenger } from './TeacherMessenger';
 
 const TABS = [
   { id: 'dashboard', label: 'হোম', icon: House },
@@ -92,6 +93,8 @@ export function AppShell({ children }) {
         )}
         {children}
       </main>
+
+      <TeacherFloatingMessenger />
 
       <nav
         className="no-print fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[480px] border-t border-slate-200/70 bg-white/90 shadow-nav backdrop-blur-xl md:bottom-4 md:max-w-[520px] md:rounded-[26px] md:border md:pb-0"

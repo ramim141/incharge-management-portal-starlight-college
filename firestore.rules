@@ -92,21 +92,25 @@ service cloud.firestore {
           && request.resource.data.from is string && request.resource.data.from.size() == 10
           && request.resource.data.to is string && request.resource.data.to.size() == 10
           && exists(/databases/$(database)/documents/portal/$(request.resource.data.portalKey))
-          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
-          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId;
+          && (get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
+              || get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.cls.code == classId)
+          && (get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId
+              || get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.studentId == request.resource.data.studentId);
       }
 
       // A student submits a query/question from the student portal (not signed in).
       match /queries/{queryId} {
-        allow create: if request.resource.data.keys().hasOnly(['id', 'classId', 'studentId', 'roll', 'studentName', 'portalKey', 'subject', 'message', 'status', 'createdAt', 'reply', 'repliedAt', 'repliedBy'])
+        allow create: if request.resource.data.keys().hasOnly(['id', 'classId', 'studentId', 'roll', 'studentName', 'portalKey', 'subject', 'message', 'status', 'createdAt', 'reply', 'repliedAt', 'repliedBy', 'sender', 'senderName', 'text'])
           && request.resource.data.id == queryId
           && request.resource.data.classId == classId
           && request.resource.data.status == 'pending'
           && request.resource.data.message is string
           && request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 600
           && exists(/databases/$(database)/documents/portal/$(request.resource.data.portalKey))
-          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
-          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId;
+          && (get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
+              || get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.cls.code == classId)
+          && (get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId
+              || get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.studentId == request.resource.data.studentId);
       }
 
       // Students can change their own PIN if their current portalKey exists

@@ -27,6 +27,7 @@ export function buildPortalSnapshot({
 
   return {
     v: 1,
+    classId: settings.classCode || '',
     student: {
       id: s.id,
       name: s.name,

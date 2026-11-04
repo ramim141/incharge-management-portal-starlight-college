@@ -1136,8 +1136,71 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     if (n) audit({ kind: 'student', action: 'নোটিশ মুছেছেন', text: n.title });
   };
 
+  /** Send a chat message or reply to a student */
+  const sendChatMessage = async ({ studentId, text, roll, studentName, portalKey = '' }) => {
+    const stamp = new Date().toISOString();
+    const clean = String(text).trim();
+    if (!clean) return;
+    const msgId = newId('msg');
+
+    // Also find any pending queries for this student and mark them replied
+    const studentQueries = (raw.queries || []).filter(
+      (q) => (q.studentId === studentId || (roll != null && String(q.roll) === String(roll))) && q.status === 'pending',
+    );
+
+    const ops = [
+      {
+        type: 'set',
+        path: P('queries', msgId),
+        data: {
+          id: msgId,
+          classId,
+          studentId,
+          roll: Number(roll || 0),
+          studentName: studentName || 'শিক্ষার্থী',
+          portalKey: portalKey || '',
+          subject: 'মেসেজ',
+          message: clean,
+          text: clean,
+          status: 'replied',
+          sender: 'teacher',
+          senderName: profile?.name || settings.inchargeName || 'ইনচার্জ',
+          reply: clean,
+          repliedAt: stamp,
+          repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+          createdAt: stamp,
+        },
+      },
+    ];
+
+    studentQueries.forEach((q) => {
+      ops.push({
+        type: 'merge',
+        path: P('queries', q.id),
+        data: {
+          status: 'replied',
+          repliedAt: stamp,
+          repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+        },
+      });
+    });
+
+    await write(ops);
+  };
+
   /** The in-charge replies to a student query */
   const replyQuery = async (id, replyText) => {
+    const target = (raw.queries || []).find((q) => q.id === id);
+    if (target) {
+      await sendChatMessage({
+        studentId: target.studentId,
+        text: replyText,
+        roll: target.roll,
+        studentName: target.studentName,
+        portalKey: target.portalKey,
+      });
+      return;
+    }
     const stamp = new Date().toISOString();
     await write([{
       type: 'merge',
@@ -1299,7 +1362,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     addStudent, updateStudent, deleteStudent, updateFee, markMonthPaid, generateMonthFees, removeMonthFees, setMonthDeadline, applyAutoFines, saveAttendanceRecord,
     getStudentAttendanceStats, recordPayment, updatePayment, deletePayment, addFine, updateFine, waiveFine, deleteFine, absenceFineFor, createExam, updateExamFees, deleteExamFees, calculateStudentTotalDue,
     generateWhatsAppMessage, getStudentDueItems, importBackup,
-    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, queries: raw.queries || [], replyQuery, deleteQuery, decideLeave, addLeave, saveNotice, deleteNotice,
+    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, queries: raw.queries || [], replyQuery, sendChatMessage, deleteQuery, decideLeave, addLeave, saveNotice, deleteNotice,
     // the same actions, each leaving a line in the audit log
     ...L,
   };

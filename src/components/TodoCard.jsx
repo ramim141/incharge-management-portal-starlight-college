@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { BellRing, Clock3, CalendarCheck, UserX, Wallet, ClipboardList, Bus, Gavel, ShieldAlert, PhoneOff, ChevronRight, CheckCircle2, Lock, HardDriveDownload, CalendarOff } from 'lucide-react';
+import { BellRing, Clock3, CalendarCheck, UserX, Wallet, ClipboardList, Bus, Gavel, ShieldAlert, PhoneOff, ChevronRight, CheckCircle2, Lock, HardDriveDownload, CalendarOff, MessageSquareText } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUI } from '../context/UIContext';
 import { Card, cx } from './ui';
@@ -22,6 +22,7 @@ const TONES = {
 export function TodoCard({ onAbsent }) {
   const {
     students, fees, fines, examFees, attendance, payments, closings, leaves, classId, settings, reminderQueue: q, missingFeeCount, generateMonthFees, setActiveTab, getStudentAttendanceStats,
+    queries = [],
   } = useApp();
   const { openWhatsApp, openDayClose, toast } = useUI();
 
@@ -64,12 +65,22 @@ export function TodoCard({ onAbsent }) {
     const noPhone = active.filter((s) => !s.guardianPhone && !s.studentPhone).length;
     // Cash of the day: nothing to close on a day without receipts; a closed day whose money later changed needs closing again
     const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
+    const pendingQueries = (queries || []).filter((q) => q.status === 'pending').length;
     const backupAge = daysSince(lastBackupAt(classId));
     const day = dayCloseSummary(payments, today);
     const closed = closings[today];
     const closeStale = closed && (Number(closed.total) !== day.total || Number(closed.expectedCash) !== day.expectedCash);
 
     return [
+      pendingQueries > 0 && {
+        id: 'queries',
+        tone: 'brand',
+        icon: MessageSquareText,
+        title: `${pendingQueries}টি শিক্ষার্থীর মেসেজ অপেক্ষায়`,
+        text: 'ইনচার্জ মেসেঞ্জারে সরাসরি উত্তর দিন',
+        act: 'উত্তর',
+        go: () => window.dispatchEvent(new CustomEvent('open_teacher_messenger')),
+      },
       pendingLeaves > 0 && { id: 'leaves', tone: 'brand', icon: CalendarOff, title: `${pendingLeaves}টি ছুটির আবেদন অপেক্ষায়`, text: 'মঞ্জুর বা নামঞ্জুর করুন', act: 'দেখুন', go: () => setActiveTab('leaves') },
       day.count > 0 && (!closed || closeStale) && { id: 'close', tone: 'green', icon: Lock, title: closeStale ? 'ক্লোজের পর আজকের হিসাব বদলেছে' : 'আজকের ক্যাশ ক্লোজ করা হয়নি', text: `${day.count}টি রশিদ · ${taka(day.total)}`, act: 'ক্লোজ', go: () => openDayClose(today) },
       q.overdue.length > 0 && { id: 'overdue', tone: 'red', icon: BellRing, title: `${q.overdue.length} জনের শেষ তারিখ পার হয়েছে`, text: 'অভিভাবককে রিমাইন্ডার পাঠান', act: 'পাঠান', go: () => openWhatsApp(q.overdue) },
@@ -95,7 +106,7 @@ export function TodoCard({ onAbsent }) {
       active.length > 0 && backupAge > 14 && { id: 'backup', tone: 'slate', icon: HardDriveDownload, title: backupAge === Infinity ? 'এখনো ব্যাকআপ নেওয়া হয়নি' : `${backupAge} দিন ধরে ব্যাকআপ নেওয়া হয়নি`, text: 'সব তথ্যের একটা কপি নামিয়ে রাখুন', act: 'নামান', go: () => setActiveTab('settings') },
       noPhone > 0 && { id: 'phone', tone: 'slate', icon: PhoneOff, title: `${noPhone} জনের অভিভাবকের ফোন নম্বর নেই`, text: 'রিমাইন্ডার পাঠাতে নম্বর লাগবে', act: 'দেখুন', go: () => setActiveTab('students') },
     ].filter(Boolean);
-  }, [students, fees, fines, examFees, attendance, payments, closings, leaves, classId, openDayClose, settings.currentMonth, q, missingFeeCount, generateMonthFees, setActiveTab, getStudentAttendanceStats, openWhatsApp, onAbsent, toast, waTick]);
+  }, [students, fees, fines, examFees, attendance, payments, closings, leaves, queries, classId, openDayClose, settings.currentMonth, q, missingFeeCount, generateMonthFees, setActiveTab, getStudentAttendanceStats, openWhatsApp, onAbsent, toast, waTick]);
 
   return (
     <div className="mt-5">

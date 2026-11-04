@@ -25,7 +25,14 @@ const range = (l) => (l.to && l.to !== l.from ? `${fmtDate(l.from, { year: false
 export const LeavesView = () => {
   const { leaves, decideLeave, queries = [], deleteQuery } = useApp();
   const { toast, confirm } = useUI();
-  const [section, setSection] = useState('leaves'); // 'leaves' | 'queries'
+  const [section, setSection] = useState(() => {
+    if (typeof window !== 'undefined' && window.__leavesInitialSection) {
+      const s = window.__leavesInitialSection;
+      delete window.__leavesInitialSection;
+      return s;
+    }
+    return 'leaves';
+  });
   const [tab, setTab] = useState('pending');
   const [queryTab, setQueryTab] = useState('pending');
   const [adding, setAdding] = useState(false);
