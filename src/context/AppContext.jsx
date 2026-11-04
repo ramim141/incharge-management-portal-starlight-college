@@ -15,7 +15,7 @@ import { newNotice, noticesForPortal } from '../lib/notices';
 // screens use. Each in-charge only ever mounts their own class; the principal can mount any.
 export const AppContext = createContext(null);
 
-const COLLS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance', 'closings', 'notices', 'leaves'];
+const COLLS = ['students', 'fees', 'examFees', 'fines', 'payments', 'attendance', 'closings', 'notices', 'leaves', 'queries'];
 
 export { studentIdFor };
 
@@ -87,7 +87,7 @@ export const absenceFineId = (date, studentId) => `fine-abs-${date}-${studentId}
 
 export function AppProvider({ classId, profile, institution, onExit, onSignOut, onOpenPortal, children }) {
   const [classDoc, setClassDoc] = useState(undefined);
-  const [raw, setRaw] = useState({ students: [], fees: [], examFees: [], fines: [], payments: [], attendance: [], closings: [], notices: [], leaves: [] });
+  const [raw, setRaw] = useState({ students: [], fees: [], examFees: [], fines: [], payments: [], attendance: [], closings: [], notices: [], leaves: [], queries: [] });
   const [ready, setReady] = useState({});
   const [activeTab, setTab] = useState('dashboard');
   // Moving between sections cross-fades when the browser supports it; otherwise it just switches
@@ -1022,7 +1022,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
           }
           const snap = buildPortalSnapshot({
             student: s, fees, examFees, fines, payments, attendance, settings,
-            attStats: getStudentAttendanceStats(s.id), totalDue: calculateStudentTotalDue(s.id), leaves: raw.leaves, notices: noticesForPortal(raw.notices, todayISO()),
+            attStats: getStudentAttendanceStats(s.id), totalDue: calculateStudentTotalDue(s.id), leaves: raw.leaves, notices: noticesForPortal(raw.notices, todayISO()), queries: raw.queries || [],
           });
           const hash = quickHash(JSON.stringify(snap));
           if (hash !== s.portalHash || key !== s.portalKey) {
@@ -1057,7 +1057,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, students, fees, examFees, fines, payments, attendance, settings, classDoc, raw.leaves, raw.notices]);
+  }, [loading, students, fees, examFees, fines, payments, attendance, settings, classDoc, raw.leaves, raw.notices, raw.queries]);
 
 
 
@@ -1134,6 +1134,25 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     const n = raw.notices.find((x) => x.id === id);
     await write([{ type: 'delete', path: P('notices', id) }]);
     if (n) audit({ kind: 'student', action: 'নোটিশ মুছেছেন', text: n.title });
+  };
+
+  /** The in-charge replies to a student query */
+  const replyQuery = async (id, replyText) => {
+    const stamp = new Date().toISOString();
+    await write([{
+      type: 'merge',
+      path: P('queries', id),
+      data: {
+        status: 'replied',
+        reply: String(replyText).trim(),
+        repliedAt: stamp,
+        repliedBy: profile?.name || settings.inchargeName || 'ইনচার্জ',
+      },
+    }]);
+  };
+
+  const deleteQuery = async (id) => {
+    await write([{ type: 'delete', path: P('queries', id) }]);
   };
 
   /* ───────── reminders: who should be nudged now ───────── */
@@ -1280,7 +1299,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     addStudent, updateStudent, deleteStudent, updateFee, markMonthPaid, generateMonthFees, removeMonthFees, setMonthDeadline, applyAutoFines, saveAttendanceRecord,
     getStudentAttendanceStats, recordPayment, updatePayment, deletePayment, addFine, updateFine, waiveFine, deleteFine, absenceFineFor, createExam, updateExamFees, deleteExamFees, calculateStudentTotalDue,
     generateWhatsAppMessage, getStudentDueItems, importBackup,
-    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, decideLeave, addLeave, saveNotice, deleteNotice,
+    reminderQueue, markReminded, closings, closeDay, reopenDay, rawRecords: raw, getBackupData, leaves: raw.leaves, notices: raw.notices, queries: raw.queries || [], replyQuery, deleteQuery, decideLeave, addLeave, saveNotice, deleteNotice,
     // the same actions, each leaving a line in the audit log
     ...L,
   };

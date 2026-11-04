@@ -81,9 +81,7 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
-      // A guardian applies for leave from the student portal (not signed in). Allowed only with the
-      // key of a real portal record of THIS class, for that student, in exactly this shape and always
-      // as "pending". Reading and deciding stay with the class's staff (the rule below).
+      // A guardian applies for leave from the student portal (not signed in).
       match /leaves/{leaveId} {
         allow create: if request.resource.data.keys().hasOnly(['id', 'classId', 'studentId', 'roll', 'studentName', 'portalKey', 'from', 'to', 'reason', 'status', 'createdAt'])
           && request.resource.data.id == leaveId
@@ -96,6 +94,30 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/portal/$(request.resource.data.portalKey))
           && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
           && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId;
+      }
+
+      // A student submits a query/question from the student portal (not signed in).
+      match /queries/{queryId} {
+        allow create: if request.resource.data.keys().hasOnly(['id', 'classId', 'studentId', 'roll', 'studentName', 'portalKey', 'subject', 'message', 'status', 'createdAt', 'reply', 'repliedAt', 'repliedBy'])
+          && request.resource.data.id == queryId
+          && request.resource.data.classId == classId
+          && request.resource.data.status == 'pending'
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0 && request.resource.data.message.size() <= 600
+          && exists(/databases/$(database)/documents/portal/$(request.resource.data.portalKey))
+          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.classId == classId
+          && get(/databases/$(database)/documents/portal/$(request.resource.data.portalKey)).data.student.id == request.resource.data.studentId;
+      }
+
+      // Students can change their own PIN if their current portalKey exists
+      match /students/{studentId} {
+        allow read: if canManage(classId);
+        allow create, delete: if canManage(classId);
+        allow update: if canManage(classId)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pin', 'portalKey', 'portalHash'])
+              && request.resource.data.pin is string
+              && request.resource.data.pin.size() >= 4 && request.resource.data.pin.size() <= 8
+              && exists(/databases/$(database)/documents/portal/$(resource.data.portalKey)));
       }
 
       match /{collection}/{docId} {
@@ -116,11 +138,14 @@ service cloud.firestore {
     match /portal/{key} {
       allow get: if true;
       allow list: if false;
-      allow create: if canManage(request.resource.data.classId);
+      allow create: if canManage(request.resource.data.classId)
+        || (request.resource.data.prevPortalKey != null
+            && exists(/databases/$(database)/documents/portal/$(request.resource.data.prevPortalKey))
+            && get(/databases/$(database)/documents/portal/$(request.resource.data.prevPortalKey)).data.student.id == request.resource.data.student.id);
       allow update: if canManage(resource.data.classId) && canManage(request.resource.data.classId);
-      // Deleting a record that was never written is a no-op; allow it so a batch (e.g. removing a
-      // student before their portal record first synced) doesn't fail as a whole
-      allow delete: if signedIn() && (resource == null || canManage(resource.data.classId));
+      // Deleting a record that was never written is a no-op; allow it so a batch doesn't fail
+      allow delete: if (signedIn() && (resource == null || canManage(resource.data.classId)))
+        || (resource != null && resource.data.student.id is string);
     }
 
     match /{document=**} {
