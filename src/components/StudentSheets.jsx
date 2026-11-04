@@ -8,7 +8,7 @@ import { useUI } from '../context/UIContext';
 import { StudentHistory } from './StudentHistory';
 import { Sheet, RollBadge, Badge, Button, Segmented, InfoRow, Ring, Field, Input, PaidAtAdmission, cx } from './ui';
 import { WhatsAppIcon } from './ReceiptSheet';
-import { feeStartLabel, randomPin, admissionPaidDefault } from '../lib/classLogic';
+import { feeStartLabel, randomPin, admissionPaidDefault, isAdmissionMonth } from '../lib/classLogic';
 import {
   taka, monthBn, groupBn, fmtDate, feeBadge, feeStatus, ATT_STATUS, ATT_ORDER, GENDERS, sectionBn, genderBn, waLink, EN_MONTHS, todayISO, FINE_STATUS,
 } from '../lib/format';
@@ -264,7 +264,7 @@ function StudentDetail({ student: s }) {
           )}
           <section>
             <p className="mb-2 text-[13px] font-bold tracking-wide text-slate-400">মাসিক বেতন</p>
-            {feeStartMonth && (
+            {feeStartMonth && isAdmissionMonth(EN_MONTHS[Number(feeStartMonth.slice(5)) - 1], Number(feeStartMonth.slice(0, 4)), feeStartMonth, settings) && (
               <p className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-[12.5px] font-medium text-emerald-700">✓ {feeStartLabel(feeStartMonth)} ভর্তি শুরুর মাস — প্রথম মাসের বেতন ভর্তির সময় নেওয়া হয়েছে (বেতন হয়ে গেছে)</p>
             )}
             {sFees.length === 0 && <Empty text={feeStartMonth ? `${feeStartLabel(feeStartMonth)} থেকে বেতন শুরু` : 'কোনো রেকর্ড নেই'} />}
@@ -823,7 +823,7 @@ function StudentForm({ editing }) {
     };
   });
   const [errors, setErrors] = useState({});
-  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(feeStartMonth));
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(feeStartMonth, new Date(), settings));
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e?.target ? e.target.value : e }));
 
   const save = async () => {

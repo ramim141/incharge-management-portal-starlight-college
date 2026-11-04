@@ -219,7 +219,7 @@ export function buildImportOps(plan, { institution, month, year, paidAtAdmission
       const student = newStudentRecord(input, g.cls.id, settings);
       // Before the class's fee start month: the admission month was paid with admission, no fee row.
       // Otherwise the admission-month fee is saved as paid when collected together with admission.
-      const isStart = isAdmissionMonth(settings.currentMonth, settings.currentYear, settings.feeStartMonth);
+      const isStart = isAdmissionMonth(settings.currentMonth, settings.currentYear, settings.feeStartMonth, settings);
       const beforeStart = isBeforeFeeStart(settings.currentMonth, settings.currentYear, settings.feeStartMonth);
       const fee = beforeStart ? null : isStart || paidAtAdmission ? markFeePaid(newFeeRow(student, settings)) : newFeeRow(student, settings);
       const snap = buildPortalSnapshot({

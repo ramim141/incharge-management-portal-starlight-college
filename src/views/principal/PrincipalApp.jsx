@@ -943,10 +943,10 @@ function ClassForm({ cls, classes, users, teachers, onDone }) {
             />
           </Field>
         </div>
-        <div className="flex items-start gap-2.5 rounded-xl bg-emerald-50/90 p-2.5 text-[12.5px] text-emerald-800 ring-1 ring-inset ring-emerald-200/70">
-          <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+        <div className="flex items-start gap-2.5 rounded-xl bg-blue-50/90 p-2.5 text-[12.5px] text-blue-800 ring-1 ring-inset ring-blue-200/70">
+          <CheckCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
           <p className="leading-snug">
-            ভর্তির মাস <strong>({f.feeStartMonth ? feeStartLabel(f.feeStartMonth) : 'শুরুর মাস'})</strong>-এর বেতন ভর্তির সময় নেওয়া হয়েছে বিধায় শিক্ষার্থীদের মাসিক বেতনে এটি স্বয়ংক্রিয়ভাবে <strong>'বেতন হয়ে গেছে'</strong> হিসেবে দেখাবে। পরবর্তী মাস থেকে ইনচার্জ নিয়মিত বেতন গ্রহণ করবেন।
+            বেতন শুরুর মাস <strong>({f.feeStartMonth ? feeStartLabel(f.feeStartMonth) : 'শুরুর মাস'})</strong> থেকে শিক্ষার্থীদের নিয়মিত মাসিক বেতন প্রযোজ্য হবে। এর পূর্ববর্তী মাসগুলো সেশন শুরুর পূর্বের মাস হিসেবে গণ্য হবে।
           </p>
         </div>
       </div>

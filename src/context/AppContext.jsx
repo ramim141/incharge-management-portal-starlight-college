@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { backend, isLocal } from '../backend';
-import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, isAdmissionMonth, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
+import { studentIdFor, buildClassSettings, newFeeRow, newStudentRecord, markFeePaid, ADMISSION_NOTE, isBeforeFeeStart, isAdmissionMonth, isXIClass, feeMonthRange, periodOf, pad, monthDeadline } from '../lib/classLogic';
 import { EN_MONTHS, todayISO, feeStatus, setClassLabels, monthBn, taka, studentDueItems, fmtDate, shiftISODate, daysBetween } from '../lib/format';
 import { DEFAULT_WHATSAPP_TEMPLATE } from '../lib/defaults';
 import { newId, portalKey, quickHash } from '../lib/hash';
@@ -21,12 +21,12 @@ export { studentIdFor };
 
 
 // "due" is always derived, so a fee row can never disagree with itself
-const normalizeFee = (f, feeStartMonth) => {
-  const isStartMonth = isAdmissionMonth(f.month, f.year, feeStartMonth);
+const normalizeFee = (f, feeStartMonth, classInfo) => {
+  const isStartMonth = isAdmissionMonth(f.month, f.year, feeStartMonth, classInfo);
   const isBefore = isBeforeFeeStart(f.month, f.year, feeStartMonth);
 
-  // Months before the class's fee start were before session; start month was taken with admission
-  if (isBefore || isStartMonth) {
+  // Months strictly before the class's fee start were before session
+  if (isBefore) {
     const amount = Number(f.amount || 0);
     return {
       ...f,
@@ -36,11 +36,29 @@ const normalizeFee = (f, feeStartMonth) => {
       paid: Math.max(Number(f.paid || 0), amount),
       due: 0,
       status: 'Paid',
-      beforeStart: isBefore,
-      atAdmission: isStartMonth,
-      note: f.note || (isStartMonth ? ADMISSION_NOTE : 'ভর্তির পূর্ববর্তী'),
+      beforeStart: true,
+      atAdmission: false,
+      note: f.note || 'ভর্তির পূর্ববর্তী',
     };
   }
+
+  // Start month taken with admission (only if explicitly enabled)
+  if (isStartMonth) {
+    const amount = Number(f.amount || 0);
+    return {
+      ...f,
+      amount,
+      fine: 0,
+      fineWaived: 0,
+      paid: Math.max(Number(f.paid || 0), amount),
+      due: 0,
+      status: 'Paid',
+      beforeStart: false,
+      atAdmission: true,
+      note: f.note || ADMISSION_NOTE,
+    };
+  }
+
   const amount = Number(f.amount || 0);
   const fine = Number(f.fine || 0);
   // Part (or all) of a late fine can be waived (মওকুফ); it no longer counts as owed
@@ -51,7 +69,7 @@ const normalizeFee = (f, feeStartMonth) => {
   if (due === 0 && (paid > 0 || amount === 0)) status = 'Paid';
   else if (paid > 0 && status !== 'Overdue') status = 'Partial';
   else if (status === 'Paid') status = 'Due';
-  return { ...f, amount, fine, fineWaived, paid, due, status };
+  return { ...f, amount, fine, fineWaived, paid, due, status, beforeStart: false, atAdmission: false };
 };
 
 // A fine can be partly waived and partly paid; what is still owed is derived from those
@@ -112,8 +130,32 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   const feeStartMonth = classDoc?.settings?.feeStartMonth || '';
   const feeEndMonth = classDoc?.settings?.feeEndMonth || '';
   const fees = useMemo(() => {
-    const normalized = raw.fees.map((f) => normalizeFee(f, feeStartMonth));
-    if (feeStartMonth) {
+    const isXI = isXIClass(settings) || isXIClass(classId);
+    const normalized = raw.fees.map((f) => {
+      // For XI class, remove any default ADMISSION_NOTE (ভর্তির সময় আদায়) on September / start month
+      // that was automatically set when no payment receipt exists
+      const isStartPeriod = feeStartMonth ? periodOf(f.month, Number(f.year)) === feeStartMonth : f.month === 'September';
+      const isAdmNote = f.note === ADMISSION_NOTE || f.note === 'ভর্তির সময় আদায়';
+      if (isXI && isStartPeriod && isAdmNote) {
+        const hasPayment = (raw.payments || []).some(
+          (p) => p.feeId === f.id || (p.studentId === f.studentId && Array.isArray(p.feeMonths) && p.feeMonths.includes(periodOf(f.month, Number(f.year))))
+        );
+        if (!hasPayment) {
+          const amt = Number(f.amount || settings.defaultMonthlyFee || 0);
+          return normalizeFee({ ...f, paid: 0, due: amt, status: 'Due', note: '', atAdmission: false }, feeStartMonth, settings);
+        }
+      }
+      return normalizeFee(f, feeStartMonth, settings);
+    });
+
+    const isStartAdmission = isAdmissionMonth(
+      feeStartMonth ? EN_MONTHS[Number(feeStartMonth.split('-')[1]) - 1] : '',
+      feeStartMonth ? Number(feeStartMonth.split('-')[0]) : 0,
+      feeStartMonth,
+      settings
+    );
+
+    if (feeStartMonth && isStartAdmission) {
       const [sY, sM] = feeStartMonth.split('-').map(Number);
       const startMonthName = EN_MONTHS[sM - 1];
       const existing = new Set(
@@ -125,13 +167,13 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
       students.forEach((s) => {
         if (!existing.has(s.id)) {
           const row = newFeeRow(s, settings, startMonthName, sY);
-          synthesized.push(normalizeFee(markFeePaid(row, ADMISSION_NOTE), feeStartMonth));
+          synthesized.push(normalizeFee(markFeePaid(row, ADMISSION_NOTE), feeStartMonth, settings));
         }
       });
       return [...normalized, ...synthesized];
     }
     return normalized;
-  }, [raw.fees, feeStartMonth, students, settings]);
+  }, [raw.fees, raw.payments, feeStartMonth, students, settings, classId]);
   const examFees = raw.examFees;
   const fines = useMemo(() => raw.fines.map(normalizeFine).sort((a, b) => String(b.date).localeCompare(String(a.date))), [raw.fines]);
   const payments = useMemo(() => [...raw.payments].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)), [raw.payments]);
@@ -403,7 +445,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     feeMonths
       .filter((m) => m.period <= upto)
       .forEach(({ month, year }) => {
-        const isStart = isAdmissionMonth(month, year, feeStartMonth);
+        const isStart = isAdmissionMonth(month, year, feeStartMonth, settings);
         activeStudents.forEach((s) => {
           if (fees.some((f) => f.studentId === s.id && f.month === month && Number(f.year) === year)) return;
           const row = feeRow(s, month, year);
@@ -450,7 +492,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
   /** Creates the month's unpaid fee for every active student that has none yet; `deadline` (YYYY-MM-DD) overrides the class default */
   const generateMonthFees = async (month = currentMonth, year = currentYear, deadline = '') => {
     if (isBeforeFeeStart(month, year, feeStartMonth)) return 0;
-    const isStart = isAdmissionMonth(month, year, feeStartMonth);
+    const isStart = isAdmissionMonth(month, year, feeStartMonth, settings);
     const have = new Set(fees.filter((f) => f.month === month && Number(f.year) === Number(year)).map((f) => f.studentId));
     const ops = activeStudents
       .filter((s) => !have.has(s.id))
@@ -1231,7 +1273,7 @@ export function AppProvider({ classId, profile, institution, onExit, onSignOut, 
     generateArrears,
     waiveStudentFines,
     isBeforeStart: (month, year) => isBeforeFeeStart(month, year, feeStartMonth),
-    isAdmissionMonth: (month, year) => isAdmissionMonth(month, year, feeStartMonth),
+    isAdmissionMonth: (month, year) => isAdmissionMonth(month, year, feeStartMonth, settings),
 
     activeTab, setActiveTab,
 

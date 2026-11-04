@@ -51,7 +51,7 @@ function ListImport({ classes, onDone }) {
       );
       const planned = planImport(rows, { classes, existing, defaultClass });
       setResult(planned);
-      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth)));
+      setPaidAtAdmission(planned.plan.length > 0 && planned.plan.every((g) => admissionPaidDefault(g.cls.settings?.feeStartMonth, new Date(), g.cls)));
       setStep('preview');
     } catch (e) {
       toast(errorText(e), 'error');
@@ -174,7 +174,7 @@ function ListImport({ classes, onDone }) {
           // Before the fee start month (for every class in this list): admission month already paid
           const now = new Date();
           const starts = result.plan.map((g) => g.cls.settings?.feeStartMonth || '');
-          const allBefore = starts.length > 0 && starts.every((fs) => isAdmissionPaid(EN_MONTHS[now.getMonth()], now.getFullYear(), fs));
+          const allBefore = starts.length > 0 && starts.every((fs) => isAdmissionPaid(EN_MONTHS[now.getMonth()], now.getFullYear(), fs, result.plan[i]?.cls));
           return (
             <PaidAtAdmission
               checked={paidAtAdmission}
@@ -287,7 +287,7 @@ function SingleStudentForm({ classes }) {
   const [f, setF] = useState(() => blankForm(classes.length === 1 ? classes[0].id : ''));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : ''));
+  const [paidAtAdmission, setPaidAtAdmission] = useState(() => admissionPaidDefault(classes.length === 1 ? classes[0].settings?.feeStartMonth : '', new Date(), classes[0]));
   const [last, setLast] = useState(null); // the student just added (to show their PIN)
   const [showPin, setShowPin] = useState(false);
   const set = (k) => (e) => {
@@ -302,7 +302,7 @@ function SingleStudentForm({ classes }) {
 
   const pickClass = (code) => {
     setF((x) => ({ ...blankForm(code), gender: x.gender }));
-    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth));
+    setPaidAtAdmission(admissionPaidDefault(classes.find((c) => c.id === code)?.settings?.feeStartMonth, new Date(), classes.find((c) => c.id === code)));
   };
 
   const save = async () => {
@@ -430,7 +430,7 @@ function SingleStudentForm({ classes }) {
         checked={paidAtAdmission}
         onChange={setPaidAtAdmission}
         month={monthBn(EN_MONTHS[new Date().getMonth()])}
-        beforeStart={!!cls && isAdmissionPaid(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth)}
+        beforeStart={!!cls && isAdmissionPaid(EN_MONTHS[new Date().getMonth()], new Date().getFullYear(), cls.settings?.feeStartMonth, cls)}
         startLabel={feeStartLabel(cls?.settings?.feeStartMonth)}
       />
 

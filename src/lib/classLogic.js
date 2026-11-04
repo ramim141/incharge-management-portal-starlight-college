@@ -70,20 +70,46 @@ export const addMonthsPeriod = (period, count = 11) => {
 };
 
 /**
- * True only for the admission/start month (e.g. July 2027 for XI-2027-28).
- * This month's fee was taken at admission — displayed as "বেতন হয়ে গেছে (ভর্তির সময়)", never due.
+ * Checks whether a class is Class 11 (XI / একাদশ শ্রেণি).
  */
-export const isAdmissionMonth = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) === feeStartMonth;
+export function isXIClass(classInfo) {
+  if (!classInfo) return false;
+  if (typeof classInfo === 'string') {
+    const s = classInfo.trim().toUpperCase();
+    return s === 'XI' || s.startsWith('XI-') || s.startsWith('XI_') || s.includes('একাদশ');
+  }
+  const code = String(classInfo.classCode || classInfo.classId || classInfo.code || classInfo.id || '').trim().toUpperCase();
+  const name = String(classInfo.className || classInfo.name || '');
+  return code === 'XI' || code.startsWith('XI-') || code.startsWith('XI_') || code.includes('XI') || name.includes('একাদশ') || name.toUpperCase().includes('XI');
+}
 
 /**
- * Months strictly before the class session began (e.g. before July 2027).
+ * True only for the admission/start month IF that month's fee was explicitly taken at admission.
+ * For XI (Class 11), September / start month fee is NOT taken at admission by default.
+ */
+export const isAdmissionMonth = (month, year, feeStartMonth, classInfo) => {
+  if (!feeStartMonth) return false;
+  if (isXIClass(classInfo)) return false;
+  const covers = classInfo?.settings?.admissionCoversStartMonth ?? classInfo?.admissionCoversStartMonth;
+  if (!covers) return false;
+  return periodOf(month, year) === feeStartMonth;
+};
+
+/**
+ * Months strictly before the class session began (e.g. before July 2027 or before September 2026).
  */
 export const isBeforeFeeStart = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) < feeStartMonth;
 
 /**
  * Either the admission month or earlier — tuition was covered at admission, nothing is owed.
  */
-export const isAdmissionPaid = (month, year, feeStartMonth) => !!feeStartMonth && periodOf(month, year) <= feeStartMonth;
+export const isAdmissionPaid = (month, year, feeStartMonth, classInfo) => {
+  if (!feeStartMonth) return false;
+  if (isXIClass(classInfo) || !(classInfo?.settings?.admissionCoversStartMonth ?? classInfo?.admissionCoversStartMonth)) {
+    return isBeforeFeeStart(month, year, feeStartMonth);
+  }
+  return periodOf(month, year) <= feeStartMonth;
+};
 
 export const BEFORE_START_LABEL = 'বেতন ভর্তির সময় নেওয়া হয়েছে';
 export const ADMISSION_PAID_LABEL = 'বেতন হয়ে গেছে (ভর্তির সময় নেওয়া)';
@@ -132,12 +158,13 @@ export const feeStartLabel = (feeStartMonth) => {
 };
 
 /**
- * Default for "this month's fee was taken at admission": yes for a new intake (no fee start, or
- * the fee start is this month or later); no for a class already running (start in the past),
- * whose students are not being admitted now.
+ * Default for "this month's fee was taken at admission".
+ * For Class XI and regular sessions, monthly tuition is owed and collected by incharge (defaults to false).
  */
-export const admissionPaidDefault = (feeStartMonth, now = new Date()) =>
-  !feeStartMonth || feeStartMonth >= periodOf(EN_MONTHS[now.getMonth()], now.getFullYear());
+export const admissionPaidDefault = (feeStartMonth, now = new Date(), classInfo) => {
+  if (isXIClass(classInfo)) return false;
+  return false;
+};
 
 export const ADMISSION_NOTE = 'ভর্তির সময় আদায়';
 
