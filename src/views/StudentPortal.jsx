@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { AppContext, useApp, normalizeFine, studentIdFor } from '../context/AppContext';
 import { CLASS_INDEX_PATH } from '../lib/classIndex';
-import { feeStartLabel, ADMISSION_NOTE } from '../lib/classLogic';
+import { feeStartLabel, isXIClass, ADMISSION_NOTE } from '../lib/classLogic';
 import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
@@ -518,7 +518,7 @@ function StudentProfile({ student: s, snap, onExit, onPinChanged }) {
               </div>
               <Card className="p-5">
                 <p className="mb-2 text-[16px] font-bold text-ink">মাসিক বেতন</p>
-                {settings.feeStartMonth && (
+                {settings.feeStartMonth && !isXIClass(settings) && !isXIClass(snap?.classId) && !isXIClass(snap?.cls) && !isXIClass(s?.studentId) && (
                   <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-[13px] font-medium text-emerald-800">
                     ✓ {feeStartLabel(settings.feeStartMonth)}-এর আগের বেতন ভর্তির সময় নেওয়া হয়েছে
                   </p>

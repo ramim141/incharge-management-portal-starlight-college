@@ -76,10 +76,10 @@ export function isXIClass(classInfo) {
   if (!classInfo) return false;
   if (typeof classInfo === 'string') {
     const s = classInfo.trim().toUpperCase();
-    return s === 'XI' || s.startsWith('XI-') || s.startsWith('XI_') || s.includes('একাদশ');
+    return s === 'XI' || s.startsWith('XI-') || s.startsWith('XI_') || s.includes('XI') || s.includes('একাদশ');
   }
-  const code = String(classInfo.classCode || classInfo.classId || classInfo.code || classInfo.id || '').trim().toUpperCase();
-  const name = String(classInfo.className || classInfo.name || '');
+  const code = String(classInfo.classCode || classInfo.classId || classInfo.code || classInfo.id || classInfo.studentId || '').trim().toUpperCase();
+  const name = String(classInfo.className || classInfo.name || classInfo.sectionName || '');
   return code === 'XI' || code.startsWith('XI-') || code.startsWith('XI_') || code.includes('XI') || name.includes('একাদশ') || name.toUpperCase().includes('XI');
 }
 

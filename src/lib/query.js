@@ -56,3 +56,4 @@ export const queriesForPortal = (all = [], studentId) =>
       repliedBy: repliedBy || '',
       createdAt,
     }));
+
