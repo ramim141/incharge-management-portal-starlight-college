@@ -144,35 +144,120 @@ function LeaveForm({ snap, existing, onSent }) {
   );
 }
 
-/* ───────────────────────── Query / Inquiries Card ───────────────────────── */
+/* ───────────────────────── Messenger & Inquiries ───────────────────────── */
 
-/** Home-screen card: ask question or send message directly to the class in-charge */
-export function QueryCard({ snap, sent }) {
-  const [open, setOpen] = useState(false);
+export function MessengerIcon({ className = 'h-6 w-6' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 2C6.477 2 2 6.145 2 11.258c0 2.91 1.455 5.513 3.735 7.185V22l3.418-1.875c.91.252 1.868.39 2.847.39 5.523 0 10-4.145 10-9.257C22 6.145 17.523 2 12 2zm1.066 12.443l-2.583-2.756-5.041 2.756 5.546-5.887 2.65 2.756 4.974-2.756-5.546 5.887z" />
+    </svg>
+  );
+}
+
+/** Floating Messenger bubble at bottom-right of the student portal */
+export function FloatingMessenger({ snap, sent, open: controlledOpen, onOpen, onClose }) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v) => {
+    if (v) {
+      if (onOpen) onOpen();
+      else setInternalOpen(true);
+    } else {
+      if (onClose) onClose();
+      else setInternalOpen(false);
+    }
+  };
+
+  const all = mergeQueries(snap.queries, sent);
+  const pending = all.filter((q) => q.status === 'pending').length;
+  const replied = all.filter((q) => q.status === 'replied').length;
+
+  return (
+    <>
+      <aside aria-label="ইনচার্জ মেসেঞ্জার চ্যাট" className="no-print fixed bottom-20 right-4 z-40 flex flex-col items-end sm:bottom-24 sm:right-6">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="press group relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-[#006AFF] via-[#0084FF] to-[#00C6FF] text-white shadow-2xl shadow-blue-500/40 ring-4 ring-white transition-all hover:scale-105 active:scale-95"
+          title="ইনচার্জ মেসেঞ্জার"
+        >
+          <MessengerIcon className="h-7 w-7 drop-shadow-sm transition-transform group-hover:scale-110" />
+
+          {/* Pending or replied notification badge */}
+          {pending > 0 ? (
+            <span className="tabular absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-black text-white ring-2 ring-white">
+              {pending}
+            </span>
+          ) : replied > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
+            </span>
+          ) : null}
+        </button>
+      </aside>
+
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        full
+        title="মেসেঞ্জার · শ্রেণি ইনচার্জ"
+        subtitle={snap.cls?.inchargeName ? `${snap.cls.inchargeName} · অনলাইনে উত্তর দেওয়া হয়` : 'ইনচার্জকে সরাসরি বার্তা পাঠান'}
+      >
+        {open && <MessengerChat snap={snap} existing={all} onSent={sent.add} />}
+      </Sheet>
+    </>
+  );
+}
+
+/** Home-screen Messenger card: taps to open the same floating messenger chat */
+export function QueryCard({ snap, sent, onOpen }) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const all = mergeQueries(snap.queries, sent);
   const last = all[0];
   const pending = all.filter((q) => q.status === 'pending').length;
 
+  const handleClick = () => {
+    if (onOpen) onOpen();
+    else setInternalOpen(true);
+  };
+
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="press block w-full text-left">
-        <Card className="flex items-center gap-3 !p-4">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
-            <MessageSquareText className="h-5 w-5" />
+      <button type="button" onClick={handleClick} className="press block w-full text-left">
+        <Card className="flex items-center gap-3.5 !p-4 transition hover:ring-blue-200">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-tr from-[#006AFF] via-[#0084FF] to-[#00C6FF] text-white shadow-md shadow-blue-500/25">
+            <MessengerIcon className="h-6 w-6" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-[15px] font-bold text-ink">ইনচার্জকে জিজ্ঞাসা / বার্তা</span>
+            <span className="block text-[15.5px] font-bold text-ink">ইনচার্জ মেসেঞ্জার / বার্তা</span>
             <span className="block truncate text-[12.5px] text-slate-500">
-              {last ? `${last.subject} · ${QUERY_STATUS[last.status]?.bn || last.status}` : 'ফি বা হাজিরা নিয়ে প্রশ্ন থাকলে জানান'}
+              {last ? `${last.subject} · ${QUERY_STATUS[last.status]?.bn || last.status}` : 'মেসেঞ্জারের মতো সরাসরি ইনবক্সে কথা বলুন'}
             </span>
           </span>
-          {pending > 0 && <Badge tone="amber">{pending}টি অপেক্ষায়</Badge>}
+          {pending > 0 ? (
+            <Badge tone="amber">{pending}টি অপেক্ষায়</Badge>
+          ) : (
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11.5px] font-bold text-[#0084FF]">
+              চ্যাট করুন
+            </span>
+          )}
           <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
         </Card>
       </button>
-      <Sheet open={open} onClose={() => setOpen(false)} full title="ইনচার্জের সাথে বার্তা" subtitle="আপনার বার্তা বা প্রশ্নের উত্তর ইনচার্জ এখানেই দেবেন">
-        {open && <QueryForm snap={snap} existing={all} onSent={sent.add} />}
-      </Sheet>
+
+      {!onOpen && (
+        <Sheet
+          open={internalOpen}
+          onClose={() => setInternalOpen(false)}
+          full
+          title="মেসেঞ্জার · শ্রেণি ইনচার্জ"
+          subtitle={snap.cls?.inchargeName ? `${snap.cls.inchargeName} · অনলাইনে উত্তর দেওয়া হয়` : 'ইনচার্জকে সরাসরি বার্তা পাঠান'}
+        >
+          {internalOpen && <MessengerChat snap={snap} existing={all} onSent={sent.add} />}
+        </Sheet>
+      )}
     </>
   );
 }
@@ -187,12 +272,16 @@ const mergeQueries = (fromSnap = [], sent) => {
   return [...sent.list.filter((q) => !seen.has(q.id)), ...fromSnap].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 };
 
-function QueryForm({ snap, existing, onSent }) {
+/** Full Messenger chat interface for students to converse with the in-charge */
+function MessengerChat({ snap, existing, onSent }) {
   const [subject, setSubject] = useState(QUERY_SUBJECTS[0]);
   const [message, setMessage] = useState('');
   const [errs, setErrs] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [sentSuccess, setSentSuccess] = useState(false);
+
+  // Chronological order (earliest at top, latest at bottom)
+  const chatMessages = [...existing].reverse();
 
   const send = async () => {
     const e = validateQuery({ subject, message });
@@ -213,8 +302,9 @@ function QueryForm({ snap, existing, onSent }) {
     try {
       await withTimeout(backend.write([{ type: 'set', path: ['classes', snap.classId, 'queries', q.id], data: q }], { wait: true }));
       onSent(q);
-      setDone(true);
       setMessage('');
+      setSentSuccess(true);
+      setTimeout(() => setSentSuccess(false), 2500);
     } catch (err) {
       setErrs([err?.code === 'permission-denied' ? 'বার্তা পাঠানো যায়নি। ইনচার্জকে জানান বা পরে আবার চেষ্টা করুন।' : err?.code === 'app/timeout' ? OFFLINE_MESSAGE : errorText(err)]);
     } finally {
@@ -223,90 +313,149 @@ function QueryForm({ snap, existing, onSent }) {
   };
 
   return (
-    <div className="space-y-5 pt-1">
-      {done ? (
-        <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900">
-          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-bold">বার্তা সফলভাবে পাঠানো হয়েছে</p>
-            <p className="text-[13px]">শ্রেণি ইনচার্জ আপনার বার্তা দেখে উত্তর দিলে এখানেই দেখতে পাবেন।</p>
-            <Button size="sm" variant="secondary" className="mt-3" onClick={() => setDone(false)}>
-              আরেকটি বার্তা পাঠান
-            </Button>
-          </div>
+    <div className="flex h-full flex-col pt-1">
+      {/* Incharge Info Header Bar */}
+      <div className="mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-blue-50/90 to-indigo-50/70 p-3 ring-1 ring-blue-100/70">
+        <span className="relative grid h-10 w-10 place-items-center rounded-full bg-gradient-to-tr from-[#006AFF] to-[#0084FF] text-white shadow-sm">
+          <MessengerIcon className="h-5 w-5" />
+          <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[14px] font-bold text-ink">{snap.cls?.inchargeName || 'শ্রেণি ইনচার্জ'}</p>
+          <p className="text-[12px] font-medium text-emerald-700">● সরাসরি ইনবক্স · উত্তর এখানেই দেখতে পাবেন</p>
         </div>
-      ) : (
-        <>
-          <div>
-            <label className="mb-1.5 block text-[13.5px] font-semibold text-slate-700">বিষয়ের ধরণ</label>
-            <div className="flex flex-wrap gap-2">
-              {QUERY_SUBJECTS.map((s) => (
+      </div>
+
+      {/* Messages Stream */}
+      <div className="flex-1 space-y-4 overflow-y-auto px-1 pb-4">
+        {chatMessages.length === 0 ? (
+          <div className="my-8 text-center">
+            <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-3xl bg-gradient-to-tr from-[#006AFF] via-[#0084FF] to-[#00C6FF] text-white shadow-lg shadow-blue-500/30">
+              <MessengerIcon className="h-8 w-8" />
+            </div>
+            <p className="text-[16px] font-bold text-ink">ইনচার্জের সাথে চ্যাট করুন</p>
+            <p className="mx-auto mt-1 max-w-xs text-[13px] text-slate-500">
+              বেতন, হাজিরা, জরিমানা বা পরীক্ষার কোনো প্রশ্ন থাকলে নিচে লিখে পাঠান।
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {[
+                'বেতন পরিশোধ সংক্রান্ত তথ্য',
+                'হাজিরা ও ছুটির জিজ্ঞাসা',
+                'পরীক্ষার ফি ও প্রবেশপত্র',
+              ].map((sug) => (
                 <button
-                  key={s}
+                  key={sug}
                   type="button"
-                  onClick={() => setSubject(s)}
-                  className={cx(
-                    'press rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition',
-                    subject === s ? 'bg-indigo-600 text-white shadow-lift' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  )}
+                  onClick={() => setMessage(sug)}
+                  className="press rounded-full bg-slate-100 px-3.5 py-1.5 text-[12.5px] font-semibold text-slate-700 transition hover:bg-slate-200"
                 >
-                  {s}
+                  💬 {sug}
                 </button>
               ))}
             </div>
           </div>
-
-          <Field label="আপনার বার্তা বা প্রশ্ন" hint="সর্বোচ্চ ৬০০ অক্ষর">
-            <Textarea
-              rows={4}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              maxLength={600}
-              placeholder="ইনচার্জের কাছে কী জানতে চান লিখুন (যেমন: ফি সংক্রান্ত, প্রবেশপত্র, বা কোনো তথ্যে ভুল থাকলে)..."
-            />
-          </Field>
-
-          {errs.length > 0 && <p className="rounded-xl bg-rose-50 px-3 py-2 text-[13.5px] font-medium text-rose-700">{errs.join(' · ')}</p>}
-
-          <Button size="lg" block icon={Send} disabled={busy || !message.trim()} onClick={send}>
-            {busy ? 'পাঠানো হচ্ছে…' : 'ইনচার্জকে পাঠান'}
-          </Button>
-        </>
-      )}
-
-      {existing.length > 0 && (
-        <div className="pt-2">
-          <p className="mb-2 text-[13.5px] font-semibold text-slate-600">পূর্ববর্তী বার্তা ও উত্তর</p>
-          <div className="space-y-3">
-            {existing.map((q) => {
-              const isReplied = q.status === 'replied' && !!q.reply;
-              return (
-                <div key={q.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[13px] font-bold text-slate-800">{q.subject}</span>
-                    <Badge tone={isReplied ? 'green' : 'amber'} dot>
-                      {QUERY_STATUS[q.status]?.bn || (isReplied ? 'উত্তর দেওয়া হয়েছে' : 'অপেক্ষায়')}
-                    </Badge>
+        ) : (
+          chatMessages.map((q) => {
+            const isReplied = q.status === 'replied' && !!q.reply;
+            return (
+              <div key={q.id} className="space-y-2">
+                {/* Student's Outgoing Message */}
+                <div className="flex flex-col items-end">
+                  <span className="mb-1 rounded-full bg-blue-100/80 px-2.5 py-0.5 text-[11px] font-bold text-blue-700">
+                    {q.subject}
+                  </span>
+                  <div className="max-w-[85%] rounded-[20px] rounded-br-sm bg-gradient-to-r from-[#006AFF] to-[#0084FF] px-4 py-2.5 text-[14.5px] leading-relaxed text-white shadow-sm">
+                    <p className="whitespace-pre-wrap">{q.message}</p>
                   </div>
-                  <p className="mt-2 text-[13.5px] text-slate-700 leading-relaxed">{q.message}</p>
-                  <p className="mt-1 text-[11.5px] text-slate-400">পাঠানো: {fmtDate(q.createdAt)} {fmtTime(q.createdAt)}</p>
-
-                  {/* Incharge Reply */}
-                  {isReplied && (
-                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/90 p-3 text-[13px] text-emerald-900">
-                      <div className="flex items-center justify-between text-[11.5px] font-bold text-emerald-700">
-                        <span>ইনচার্জের উত্তর ({q.repliedBy || 'ইনচার্জ'})</span>
-                        {q.repliedAt && <span>{fmtDate(q.repliedAt)}</span>}
-                      </div>
-                      <p className="mt-1 leading-relaxed font-medium">{q.reply}</p>
-                    </div>
-                  )}
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <span>{fmtDate(q.createdAt, { year: false })} {fmtTime(q.createdAt)}</span>
+                    <span>·</span>
+                    <span className={cx('font-semibold', isReplied ? 'text-emerald-600' : 'text-amber-600')}>
+                      {isReplied ? '✓ উত্তর এসেছে' : '🕒 অপেক্ষায়'}
+                    </span>
+                  </div>
                 </div>
-              );
-            })}
+
+                {/* Incharge's Incoming Reply */}
+                {isReplied && (
+                  <div className="flex items-start gap-2 pt-1">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emerald-600 text-[11px] font-bold text-white shadow-sm">
+                      ই
+                    </span>
+                    <div className="max-w-[85%]">
+                      <div className="rounded-[20px] rounded-bl-sm border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-[14px] leading-relaxed text-emerald-950 shadow-sm">
+                        <p className="mb-0.5 text-[11.5px] font-bold text-emerald-800">
+                          {q.repliedBy || 'শ্রেণি ইনচার্জ'}
+                        </p>
+                        <p className="whitespace-pre-wrap">{q.reply}</p>
+                      </div>
+                      <p className="mt-1 pl-1 text-[11px] text-slate-400">
+                        {q.repliedAt && `${fmtDate(q.repliedAt, { year: false })} ${fmtTime(q.repliedAt)}`}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Floating Messenger Bottom Input Dock */}
+      <div className="border-t border-slate-200/80 pt-3">
+        {sentSuccess && (
+          <div className="mb-2 flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-1.5 text-[12.5px] font-bold text-emerald-800 animate-fadeIn">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <span>বার্তা পাঠানো হয়েছে! ইনচার্জের উত্তরের জন্য অপেক্ষা করুন।</span>
           </div>
+        )}
+
+        {/* Topic Selector Pills */}
+        <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {QUERY_SUBJECTS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setSubject(s)}
+              className={cx(
+                'press shrink-0 rounded-full px-3 py-1 text-[12px] font-semibold transition',
+                subject === s ? 'bg-[#0084FF] text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              )}
+            >
+              {s}
+            </button>
+          ))}
         </div>
-      )}
+
+        {/* Message Input Box */}
+        <div className="flex items-end gap-2 rounded-[24px] bg-slate-100 p-1.5 pl-4 ring-1 ring-inset ring-slate-200/80 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-[#0084FF]">
+          <textarea
+            rows={1}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            maxLength={600}
+            placeholder="ইনচার্জকে বার্তা লিখুন…"
+            className="max-h-24 min-h-[38px] flex-1 resize-none bg-transparent py-2 text-[14.5px] text-ink outline-none placeholder:text-slate-400"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <button
+            type="button"
+            disabled={busy || !message.trim()}
+            onClick={send}
+            className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-[#006AFF] to-[#0084FF] text-white shadow-md transition disabled:opacity-40"
+            title="বার্তা পাঠান"
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+
+        {errs.length > 0 && <p className="mt-1.5 px-2 text-[12.5px] font-medium text-rose-600">{errs.join(' · ')}</p>}
+      </div>
     </div>
   );
 }

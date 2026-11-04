@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useUI } from '../context/UIContext';
 import { backend } from '../backend';
 import { ReceiptSheet } from '../components/ReceiptSheet';
-import { LeaveCard, useSentLeaves, QueryCard, useSentQueries, ChangePinSheet } from '../components/PortalExtras';
+import { LeaveCard, useSentLeaves, QueryCard, useSentQueries, ChangePinSheet, FloatingMessenger } from '../components/PortalExtras';
 import { StatementDownloadButton } from '../components/PortalStatement';
 import { NoticeBoard } from '../components/NoticeBoard';
 import { RollBadge, Badge, Button, Card, Ring, InfoRow, Sheet, Logo, cx, CONTAINER, GUTTER, BLEED } from '../components/ui';
@@ -647,6 +647,7 @@ function StudentProfile({ student: s, snap, onExit, onPinChanged }) {
           )}
         </div>
       </div>
+      <FloatingMessenger snap={snap} sent={sentQueries} />
       <ChangePinSheet
         snap={snap}
         open={pinSheetOpen}
